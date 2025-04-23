@@ -1,8 +1,0 @@
-Gathering histogram statistics for 420 triads.
-Gathering temporal statistics for 12 triads.
-Starting from time-step 1 and time 0.000.
-Finished time-stepping loop. Total wall time: 240.3780, iterations per second: 41.5928.
-Saving files last time... Stat = 3, time = 7.1148e+00
-Finished saving. Exiting... 
- 
-
