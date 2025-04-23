@@ -37,25 +37,6 @@ if num_args>1:
 # Initialize random number generator (using numpy because it's faster)
 rng = numpy.random.default_rng(seed)
 
-# If recording triad statistics, load relevant information
-if triad_phase_hist:
-    # Load triads for histogram
-    triads = np.loadtxt(idir+'/triads.txt')
-    Ntriads = triads.shape[0]
-    print("Gathering histogram statistics for %s triads." % Ntriads, flush = True)
-
-    # Define histogram
-    thetauuu = np.zeros((Nbins,Ntriads))
-    # Define scriptK
-    scriptK = np.zeros((2,Ntriads))
-    # Set count to zero for scriptK average
-    i_count = 0
-
-    # Now process time-series triads
-    triads_ts = np.loadtxt(idir+'/triads_ts.txt')
-    Ntriads_ts = triads_ts.shape[0]
-    print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
-    
 # Builds the wave number and the square wave number matrixes
 # In spectral space, index 0 is the ky axis, index 1 is the kx axis
 # In real space, index 0 is the y axis, index 1 is the x axis
@@ -86,7 +67,6 @@ if stat==0:
     timet = tstep
     timec = cstep
     times = sstep
-    timeth = thstep
 
     # Stream function IC (random phase up to kup)
     ps = np.zeros((n,n_half),dtype=complex)
@@ -95,9 +75,6 @@ if stat==0:
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
     ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
-    if phase_only: 
-        cond = (ka2>kup**2)&(ka2<=kmax)
-        ps[cond] = (np.sqrt(ka2[cond])/kup)**((-beta-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
     # Ensure 'realness' in the kx = 0 axis:
     ps[n_half:,0] = np.flip(np.conj(ps[1:n_half-1,0]))
     ps[0,0] = ps[n_half-1,0] = 0.0
@@ -109,7 +86,6 @@ else:
     ini = int((stat-1)*tstep)
     dump = float(ini)/float(sstep)+1
     times = 0
-    timeth = 0
     timet = 0
     timec = 0
     timecorr = 0
@@ -120,28 +96,6 @@ else:
     # FFT to get ps
     ps = np.fft.rfftn(R1)
 
-    # If traid_phase_hist, then load the histogram array
-    if triad_phase_hist:
-        # Check to see if thetauuu file exists:
-        my_file = Path(odir+'/thetauuu.npy')
-        if my_file.is_file():
-            # Load
-            thetauuu[:] = np.load(my_file,allow_pickle=True)[:]
-
-        # Check to see if scriptK file exists:
-        my_file = Path(odir+'/scriptK.npy')
-        if my_file.is_file():
-            # Load
-            scriptK[:] = np.load(my_file,allow_pickle=True)[:]
-
-        # Also load the count file, if it exists:
-        my_file = Path(odir+'/count.txt')
-        if my_file.is_file():
-            # Load
-            i_count = int(np.loadtxt(my_file))
-            print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
-
-
 print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
 
 ###############
@@ -149,25 +103,6 @@ print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
 ###############
 dt = CFL_condition(ps,KX,KY,I)
 if iflow==1:
-    ## OLD VERSION (from fortran code)
-    # kdn=kup
-    # if num_args>1:
-    #     # If we're doing an ensemble run, where we change the seed by
-    #     # feeding arguments to the execution, then we add a random
-    #     # phase at the beginning of each run.
-    #     phase1=rng.uniform(low=-np.pi,high=np.pi)
-    #     phase2=rng.uniform(low=-np.pi,high=np.pi)
-    # else:
-    #     phase1=phase2=0.0
-    # R1 = np.sin(2*np.pi*kup*np.mgrid[:n:1,:n:1][0]/n+phase1)+np.sin(2*kup*np.pi*np.mgrid[:n:1,:n:1][1]/n+phase2)
-    # # FFT to get ps
-    # fp = np.fft.rfftn(R1)
-    # # Renormalize
-    # fp[(ka2>kmax)&(ka2<tiny)]=0.0 
-    # E = energy(fp,1,ka2)
-    # fp *= fp0/np.sqrt(E)
-
-    ## NEW VERSION
     # Stream function forcing (kdn to kup)
     fp = np.zeros((n,n_half),dtype=complex)
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
@@ -215,9 +150,6 @@ while (time_wall.time() < sim_end)&(t<=step):
     if timec==cstep:
         timec = 0
         cond_check(ps,fp,time,ka2)
-        if triad_phase_hist:
-            # Output time series of triad energy and p hase for various triads.
-            corr_check(ps,time,ka2,ka,ka_half,KX,KY,triads_ts)
 
     # Every 1000 steps, check if RUNNING.txt is present, otherwise end the stepping and save last outputs.
     if (t%1000)==0:
@@ -238,12 +170,6 @@ while (time_wall.time() < sim_end)&(t<=step):
         with open('./time_spec.txt', 'a') as f:
             f.write(f"{int(dump):04} {time:14.6F}\n")
 
-    # Every 'thstep' steps, calculates and updates thetauuu histogram and scriptK online average (if triad_phase_hist is true)
-    if ((timeth==thstep)&(triad_phase_hist)): 
-        timeth = 0
-        # Updates thetauuu, defined 'globally' using module theta_hist
-        i_count,thetauuu,scriptK = thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half)
-        
     # Every 'tstep' steps, stores the results of the integration
     if timet==tstep:
         timet = 0
@@ -254,13 +180,6 @@ while (time_wall.time() < sim_end)&(t<=step):
         
         R1 = np.fft.irfftn(laplak2(ps,ka2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
-        
-        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
-        if triad_phase_hist:
-            np.save(odir+'/thetauuu.npy',thetauuu)
-            np.save(odir+'/scriptK.npy',scriptK)
-            np.save(odir+'/i_count.npy',i_count)
-            
         
         with open('./time_field.txt', 'a') as f:
             f.write(f"{int(stat):03} {time:14.6F}\n")
@@ -288,7 +207,6 @@ while (time_wall.time() < sim_end)&(t<=step):
     t += 1 
     timet += 1
     times += 1
-    timeth += 1
     timec += 1
     time += dt   
     
@@ -305,13 +223,6 @@ np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 
 R1 = np.fft.irfftn(laplak2(ps,ka2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
-
-# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
-if triad_phase_hist:
-    np.save(odir+'/thetauuu.npy',thetauuu)
-    np.save(odir+'/scriptK.npy',scriptK)
-    np.save(odir+'/i_count.npy',i_count)
-    
 
 with open('./time_field.txt', 'a') as f:
     f.write(f"{int(stat):03} {time:14.6F}\n")

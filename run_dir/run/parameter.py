@@ -1,10 +1,4 @@
-# import numpy as np
 import cupy as np
-
-######################################
-### Phase only or full simulation? ###
-######################################
-phase_only = False
 
 ##################
 ### Resolution ###
@@ -49,8 +43,6 @@ mm = 2                     # order of hypo-dissipation
 seed = 123456              # random seed
 iflow = 3                  # forcing choice (1 = sin(x)*sin(y), 2 = const inj, 3 = random forcing)
 dt_corr = 0.00             # forcing correlation time
-triad_phase_hist = False   # If true, then loads and updates histograms of triad phases
-Nbins = 30                 # Sets the number of bins for the PDFs of thetas
 alpha = 1.75                # Initial KE spectrum (from largest scale to kup) is KE(k) = k**(-alpha), with integrated, total KE = u0. 
 beta = 1.75                 # Initial KE spectrum (from kup to smallest scales) is KE(k) = k**(-beta), with integrated, total KE = u0. ONLY USED IN PHASE ONLY VERSION
 idir = '../ins'
