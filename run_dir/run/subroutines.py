@@ -184,46 +184,6 @@ def inerprod(a,b,kin,ka2):
     rslt /= n**4
     return rslt
 
-# def laplak2(a,ka2):
-#     """
-#     Two-dimensional Laplacian of the matrix 'a'
-
-#     ARGUMENTS
-#      a : input matrix
-#      ka2: the square of the wave vector
-
-#     RETURNS
-#      b : at the output contains the Laplacian d2a/dka2
-#     """
-#     return -ka2*a
-
-# def poisson(a,b,ka2,KX,KY,I):
-#     """
-#     Poisson bracket of the scalar fields A and B
-#     in real space.
-    
-#     ARGUMENTS
-#      a: input matrix
-#      b: input matrix
-#      ka2: the square of the wave vector
-#      KX : wave-vector kx
-#      KY : wave-vector ky
-
-#     RETURNS
-#      c: Poisson bracket {a,b} [output]
-#     """
-#     # da/dx * db/dy
-#     dx = derivk2(KX,a,I)
-#     dy = derivk2(KY,b,I)
-#     prod = np.fft.irfftn(dx)*np.fft.irfftn(dy)
-
-#     # da/dy * db/dx
-#     dx = derivk2(KX,b,I)
-#     dy = derivk2(KY,a,I)
-    
-#     prod = (prod - np.fft.irfftn(dx)*np.fft.irfftn(dy))
-    
-#     return  np.fft.rfftn(prod)*((ka2>tiny)&(ka2<kmax))
 def poisson(a,b,ka2,KX,KY,I):
     """
     Poisson bracket of the scalar fields A and B
@@ -235,6 +195,7 @@ def poisson(a,b,ka2,KX,KY,I):
      ka2: the square of the wave vector
      KX : wave-vector kx
      KY : wave-vector ky
+     I : Imaginary matrix.
 
     RETURNS
      c: Poisson bracket {a,b} [output]
@@ -327,6 +288,8 @@ def rand_force(dt,ka2,ka,ka_half,rng):
     ARGUMENTS
      dt : time step
      ka2: the square of the wave vector
+     ka : wavenumbers
+     ka_half: half wavenumbers
      rng: random numbers
 
     RETURNS
@@ -449,6 +412,7 @@ def transfers(ps,dump,ka2,KX,KY,I):
      ka2: the square of the wave vector
      KX : wave-vector kx
      KY : wave-vector ky
+     I : Imaginary matrix.
 
     RETURNS
      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
@@ -493,61 +457,6 @@ def transfers(ps,dump,ka2,KX,KY,I):
             f.write(f"{pi_enst[i]:24.15E} {pi_en[i]:24.15E}\n")
         
     return
-# def transfers(ps,dump,ka2,KX,KY):
-#     """
-#     Computes the one-dimensional energy transfer and flux (averaged over shells).
-    
-#     ARGUMENTS
-#      ps: streamfunction
-#      dump: output number
-#      ka2: the square of the wave vector
-#      KX : wave-vector kx
-#      KY : wave-vector ky
-
-#     RETURNS
-#      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
-#     """
-#     # Keaton Burn's version (using histogram for shell-averaging)
-    
-#     two = np.ones((n_half))
-#     two[1:] *= 2
-#     tmp = 1/n**4
-    
-#     # Nonlinear term
-#     nl = laplak2(ps,ka2) # Makes -w_2D
-#     nl = poisson(ps,nl,ka2,KX,KY) # Makes -curl(u_2D x w_2D)
-    
-#     # Shell average of sqrt(ka2)
-#     bins = np.concatenate(([0.0],np.arange(1.5, n_half+1.5, 1)))
-#     hist_samples, _ = np.histogram(np.sqrt(ka2),bins=bins)
-    
-#     ### Enstrophy flux
-#     enst_tran_tmp = two[None,:]*ka2*np.real(ps*np.conj(nl))*tmp
-#     # Shell average of enst_trans*sqrt(ka2) 
-#     pow_samples, _ = np.histogram(np.sqrt(ka2), bins=bins, weights=enst_tran_tmp)
-#     # enst_trans(k) = int |k| enst_trans  dtheta / int |k| dtheta
-#     enst_tran = pow_samples / hist_samples
-    
-#     ### Energy flux
-#     en_tran_tmp = two[None,:]*ka2*np.real(ps*np.conj(nl))*tmp
-#     # Shell average of enst_trans*sqrt(ka2) 
-#     pow_samples, _ = np.histogram(np.sqrt(ka2), bins=bins, weights=en_tran_tmp)
-#     # enst_trans(k) = int |k| enst_trans  dtheta / int |k| dtheta
-#     en_tran = pow_samples / hist_samples
-    
-#     # Writes to file
-#     with open(odir+'/transfer.'+f'{int(dump):04}'+'.txt', 'w') as f:
-#         for i in range(n_half):
-#             f.write(f"{enst_tran[i]:24.15E} {en_tran[i]:24.15E}\n")
-        
-#     # Fluxes:
-#     pi_enst = np.cumsum(enst_tran)
-#     pi_en = np.cumsum(en_tran)
-#     with open(odir+'/fluxes.'+f'{int(dump):04}'+'.txt', 'w') as f:
-#         for i in range(n_half):
-#             f.write(f"{pi_enst[i]:24.15E} {pi_en[i]:24.15E}\n")
-        
-#     return
 
 def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
     """
@@ -555,8 +464,12 @@ def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
 
     ARGUMENTS
      ps  : streamfunction
-     ka2: the square of the wave vector
      triads : list of triads loaded at beginning of simulation
+     i_count : count for statistics
+     thetauuu : the PDF of the triad phases
+     scriptK : the average value of the K coefficient
+     ka : wavenumbers
+     ka_half: half wavenumbers
 
     RETURNS
      [i_count, thetauuu, scriptK]
@@ -630,12 +543,17 @@ def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
 
 def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
     """
-    Calculates theta, dt(theta), and scriptK for a set of triads, and writes these values to a time series file.
+    Calculates theta, dt(theta), the 'noise term' and scriptK for a set of triads, and writes these values to a time series file.
 
     ARGUMENTS
      ps  : streamfunction
      time: time
      ka2: the square of the wave vector
+     ka : wavenumbers
+     ka_half: half wavenumbers
+     KX : wave-vector kx
+     KY : wave-vector ky
+     I : Imaginary matrix.
      triads_ts : list of triads loaded at beginning of simulation
 
     RETURNS
