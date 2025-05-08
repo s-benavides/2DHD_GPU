@@ -467,7 +467,7 @@ def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
      triads : list of triads loaded at beginning of simulation
      i_count : count for statistics
      thetauuu : the PDF of the triad phases
-     scriptK : the average value of the K coefficient
+     scriptK : the average value and variance of the K coefficient
      ka : wavenumbers
      ka_half: half wavenumbers
 
