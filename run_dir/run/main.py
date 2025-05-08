@@ -90,8 +90,7 @@ if stat==0:
 
     # Stream function IC (random phase up to kup)
     ps = np.zeros((n,n_half),dtype=complex)
-    # cond = (ka2<=kmax)&(ka2>=tiny)
-    cond = (ka2<=kup**2)&(ka2>=4)
+    cond = (ka2<=kmax)&(ka2>=tiny)
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
     ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
@@ -217,7 +216,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         cond_check(ps,fp,time,ka2)
         if triad_phase_hist:
             # Output time series of triad energy and p hase for various triads.
-            corr_check(ps,time,ka2,ka,ka_half,KX,KY,triads_ts)
+            corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts)
 
     # Every 1000 steps, check if RUNNING.txt is present, otherwise end the stepping and save last outputs.
     if (t%1000)==0:
@@ -264,25 +263,43 @@ while (time_wall.time() < sim_end)&(t<=step):
         
         with open('./time_field.txt', 'a') as f:
             f.write(f"{int(stat):03} {time:14.6F}\n")
-    
-    ######## Runge-Kutta step 1
-    C3 = np.copy(ps)
-    
-    ######## Runge-Kutta step 2
-    for o in range(ord,0,-1):
-        # Iflow2: change forcing to keep constant energy
-        if iflow==2:
-            fp = const_inj(C3,ka2,rng)
+
+    if phase_only:
+        ####### Runge-Kutta step 1
+        rho = np.abs(ps)
+        phi = np.angle(ps)
+        
+        ######## Runge-Kutta step 2
+        for o in range(ord,0,-1):
+            # Nonlinear term
+            nl = laplak2(rho*np.exp(1j*phi),ka2) # Makes -w_2D
+            nl = poisson(rho*np.exp(1j*phi),nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
             
-        # Nonlinear term
-        nl = laplak2(C3,ka2) # Makes -w_2D
-        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+            tmp1 = dt/float(o)
+            dphidt = dphi_dt(rho*np.exp(1j*phi),nl,ka2,kmax,I)
+            phi = np.angle(ps) + tmp1*dphidt
+            
+        ######## Runge-Kutta step 3
+        ps = np.copy(rho*np.exp(1j*phi))
+    else:
+        ######## Runge-Kutta step 1
+        C3 = np.copy(ps)
         
-        tmp1 = dt/float(o)
-        C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
-        
-    ######## Runge-Kutta step 3
-    ps = np.copy(C3)
+        ######## Runge-Kutta step 2
+        for o in range(ord,0,-1):
+            # Iflow2: change forcing to keep constant energy
+            if iflow==2:
+                fp = const_inj(C3,ka2,rng)
+                
+            # Nonlinear term
+            nl = laplak2(C3,ka2) # Makes -w_2D
+            nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+            
+            tmp1 = dt/float(o)
+            C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
+            
+        ######## Runge-Kutta step 3
+        ps = np.copy(C3)
 
     # Update times and counters
     t += 1 
