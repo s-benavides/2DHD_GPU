@@ -134,10 +134,10 @@ else:
             scriptK[:] = np.load(my_file,allow_pickle=True)[:]
 
         # Also load the count file, if it exists:
-        my_file = Path(odir+'/count.txt')
+        my_file = Path(odir+'/i_count.npy')
         if my_file.is_file():
             # Load
-            i_count = int(np.loadtxt(my_file))
+            i_count = int(np.load(my_file,allow_pickle=True))
             print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
 
 
@@ -338,6 +338,9 @@ if os.path.isfile('./RUNNING.txt'):
     os.remove('./RUNNING.txt')
 
 # Delete variables (might not be necessary...)
-del ps,fp,R1,C3,ka2,KX,KY,nl
+if phase_only:
+    del ps,fp,R1,rho,phi,ka2,KX,KY,nl
+else:
+    del ps,fp,R1,C3,ka2,KX,KY,nl
 
 print('Finished saving. Exiting... \n \n',flush=True)
