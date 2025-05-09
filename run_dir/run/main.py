@@ -66,13 +66,6 @@ ka2 = KX**2+KY**2
 # Imaginary matrix
 I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
-###########
-### FFT ###
-###########
-# This is where the FFT planning is made in the fortran version. 
-# At the moment, no FFT-related calls are made. 
-# Eventually, with further optimization, we will likely add a planning call here.
-
 ##########################
 ### INITIAL CONDITIONS ###
 ##########################
@@ -148,25 +141,6 @@ print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
 ###############
 dt = CFL_condition(ps,KX,KY,I)
 if iflow==1:
-    ## OLD VERSION (from fortran code)
-    # kdn=kup
-    # if num_args>1:
-    #     # If we're doing an ensemble run, where we change the seed by
-    #     # feeding arguments to the execution, then we add a random
-    #     # phase at the beginning of each run.
-    #     phase1=rng.uniform(low=-np.pi,high=np.pi)
-    #     phase2=rng.uniform(low=-np.pi,high=np.pi)
-    # else:
-    #     phase1=phase2=0.0
-    # R1 = np.sin(2*np.pi*kup*np.mgrid[:n:1,:n:1][0]/n+phase1)+np.sin(2*kup*np.pi*np.mgrid[:n:1,:n:1][1]/n+phase2)
-    # # FFT to get ps
-    # fp = np.fft.rfftn(R1)
-    # # Renormalize
-    # fp[(ka2>kmax)&(ka2<tiny)]=0.0 
-    # E = energy(fp,1,ka2)
-    # fp *= fp0/np.sqrt(E)
-
-    ## NEW VERSION
     # Stream function forcing (kdn to kup)
     fp = np.zeros((n,n_half),dtype=complex)
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
@@ -201,9 +175,6 @@ else:
 #################
 start_time=time_wall.time()
 sim_end = start_time + 60*60*H # run for H hours
-# import tqdm # FOR TESTING
-# for t in tqdm.tqdm(range(ini,step)): # FOR TESTING
-# for t in range(ini,step):
 t = ini
 while (time_wall.time() < sim_end)&(t<=step):
     if (t%cfl_cad)==0: # Update dt every cfl_cad time steps.
@@ -240,7 +211,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     # Every 'thstep' steps, calculates and updates thetauuu histogram and scriptK online average (if triad_phase_hist is true)
     if ((timeth==thstep)&(triad_phase_hist)): 
         timeth = 0
-        # Updates thetauuu, defined 'globally' using module theta_hist
+        # Updates thetauuu
         i_count,thetauuu,scriptK = thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half)
         
     # Every 'tstep' steps, stores the results of the integration
