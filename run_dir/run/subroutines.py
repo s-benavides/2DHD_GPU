@@ -104,6 +104,18 @@ NL = np.ElementwiseKernel(
    """,
    'NL')
 
+NL_phase_only = np.ElementwiseKernel(
+   'complex128 ps, complex128 in, complex128 nl, float64 tmp1, float64 ka2, float64 kmax, complex128 I',
+   'complex128 out',
+   """
+    if (ka2 > kmax || ka2 == 0 || abs(in) == 0 ) {
+       out = 0;
+    } else {
+       out = abs(ps)*exp(I*(atan2(imag(ps), real(ps)) + tmp1*imag(exp(-I*atan2(imag(in), real(in)))*(-nl/ka2)/abs(in))));
+    }
+   """,
+   'NL_phase_only')
+
 # """
 # Used in corr_check
 # """
@@ -341,13 +353,19 @@ def cond_check(ps,fp,time,ka2):
     """
     # Energy budget
     en = energy(ps,1,ka2) # |u|^2
-    inj = inerprod(ps,fp,1,ka2) # energy injection
+    if fp==None:
+        inj = np.nan
+    else:
+        inj = inerprod(ps,fp,1,ka2) # energy injection
     diss = nu*energy(ps,nn+1,ka2) # dissipation
     hdiss = hnu*energy(ps,1-mm,ka2) # hypodissipation
 
     # Enstrophy budget
     enst = energy(ps,2,ka2) # |omega|^2
-    inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
+    if fp==None:
+        inj_enst = np.nan
+    else:
+        inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
     diss_enst = nu*energy(ps,nn+2,ka2) # enstrophy dissipation
     hdiss_enst = hnu*energy(ps,2-mm,ka2) # enstrophy hypodissipation
 
