@@ -1,11 +1,6 @@
 # import numpy as np
 import cupy as np
 
-######################################
-### Phase only or full simulation? ###
-######################################
-phase_only = False
-
 ##################
 ### Resolution ###
 ##################
