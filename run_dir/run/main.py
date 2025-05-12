@@ -87,9 +87,6 @@ if stat==0:
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
     ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
-    if phase_only: 
-        cond = (ka2>kup**2)&(ka2<=kmax)
-        ps[cond] = (np.sqrt(ka2[cond])/kup)**((-beta-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
     # Ensure 'realness' in the kx = 0 axis:
     ps[n_half:,0] = np.flip(np.conj(ps[1:n_half-1,0]))
     ps[0,0] = ps[n_half-1,0] = 0.0
@@ -235,42 +232,24 @@ while (time_wall.time() < sim_end)&(t<=step):
         with open('./time_field.txt', 'a') as f:
             f.write(f"{int(stat):03} {time:14.6F}\n")
 
-    if phase_only:
-        ####### Runge-Kutta step 1
-        rho = np.abs(ps)
-        phi = np.angle(ps)
+    ######## Runge-Kutta step 1
+    C3 = np.copy(ps)
+    
+    ######## Runge-Kutta step 2
+    for o in range(ord,0,-1):
+        # Iflow2: change forcing to keep constant energy
+        if iflow==2:
+            fp = const_inj(C3,ka2,rng)
+            
+        # Nonlinear term
+        nl = laplak2(C3,ka2) # Makes -w_2D
+        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
-        ######## Runge-Kutta step 2
-        for o in range(ord,0,-1):
-            # Nonlinear term
-            nl = laplak2(rho*np.exp(1j*phi),ka2) # Makes -w_2D
-            nl = poisson(rho*np.exp(1j*phi),nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
-            
-            tmp1 = dt/float(o)
-            dphidt = dphi_dt(rho*np.exp(1j*phi),nl,ka2,kmax,I)
-            phi = np.angle(ps) + tmp1*dphidt
-            
-        ######## Runge-Kutta step 3
-        ps = np.copy(rho*np.exp(1j*phi))
-    else:
-        ######## Runge-Kutta step 1
-        C3 = np.copy(ps)
+        tmp1 = dt/float(o)
+        C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
         
-        ######## Runge-Kutta step 2
-        for o in range(ord,0,-1):
-            # Iflow2: change forcing to keep constant energy
-            if iflow==2:
-                fp = const_inj(C3,ka2,rng)
-                
-            # Nonlinear term
-            nl = laplak2(C3,ka2) # Makes -w_2D
-            nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
-            
-            tmp1 = dt/float(o)
-            C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
-            
-        ######## Runge-Kutta step 3
-        ps = np.copy(C3)
+    ######## Runge-Kutta step 3
+    ps = np.copy(C3)
 
     # Update times and counters
     t += 1 
@@ -309,9 +288,6 @@ if os.path.isfile('./RUNNING.txt'):
     os.remove('./RUNNING.txt')
 
 # Delete variables (might not be necessary...)
-if phase_only:
-    del ps,fp,R1,rho,phi,ka2,KX,KY,nl
-else:
-    del ps,fp,R1,C3,ka2,KX,KY,nl
+del ps,fp,R1,C3,ka2,KX,KY,nl
 
 print('Finished saving. Exiting... \n \n',flush=True)
