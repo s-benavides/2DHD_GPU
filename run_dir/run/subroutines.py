@@ -131,6 +131,21 @@ dphi_dt = np.ElementwiseKernel(
    """,
    'dphi_dt')
 
+# """
+# scriptK calculations
+# """
+scriptK_calc = np.ElementwiseKernel(
+   'float64 kmag, float64 pmag, float64 qmag,float64 rhoks, float64 rhops, float64 rhoqs',
+   'float64 out',
+    """
+    if (abs(rhoqs*rhops*rhoks) > 0) {
+       out = ((pow(qmag,2.0)-pow(pmag,2.0))/(pow(kmag,2.0)))*abs((rhoqs*rhops)/(rhoks)) + ((pow(pmag,2.0)-pow(kmag,2.0))/(pow(qmag,2.0)))*abs((rhoks*rhops)/(rhoqs)) + ((pow(kmag,2.0)-pow(qmag,2.0))/(pow(pmag,2.0)))*abs((rhoks*rhoqs)/(rhops));
+    } else {
+        out = 0.0;
+    }
+    """,
+   'scriptK_calc')
+
 ###########################
 ### Spectral operations ###
 ###########################
@@ -476,7 +491,7 @@ def transfers(ps,dump,ka2,KX,KY,I):
         
     return
 
-def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
+def thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag):
     """
     Updates the histogram for theta and scriptK, as well as updates the count for the averaging. 
 
@@ -488,12 +503,13 @@ def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
      scriptK : the average value and variance of the K coefficient
      ka : wavenumbers
      ka_half: half wavenumbers
-
+     ind*: array used to isolate triads through dot products (to avoid for-loops).
+     *mag: magnitudes of triads
+    
     RETURNS
      [i_count, thetauuu, scriptK]
     """    
     tmp = 1/n**2
-    Ntriads = triads.shape[0]
     
     # Update counter:
     i_count += 1
@@ -502,60 +518,45 @@ def thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half):
     dtheta = 2*np.pi/Nbins
     bins_centered = -np.pi + dtheta/2 + dtheta*np.arange(Nbins)
 
-    # Load file listing triads.
-    for Ntr,triad in enumerate(triads):
-        kx,ky,px,py = triad
-        qx = -kx-px
-        qy = -ky-py
-        # Magnitudes
-        kmag = np.sqrt(kx**2+ky**2)
-        pmag = np.sqrt(px**2+py**2)
-        qmag = np.sqrt(qx**2+qy**2)
+    # Isolate individual triad rhos and phis
+    rhos = np.abs(ps)
+    rhoks = np.diag(np.dot(np.dot(indKY,rhos),indKX))
+    rhops = np.diag(np.dot(np.dot(indPY,rhos),indPX))
+    rhoqs = np.diag(np.dot(np.dot(indQY,rhos),indQX))
+    phis = np.angle(ps)
+    phiks = np.diag(np.dot(np.dot(indKY,phis),indKX))
+    phips = np.diag(np.dot(np.dot(indPY,phis),indPX))
+    phiqs = np.diag(np.dot(np.dot(indQY,phis),indQX))
     
-        ## Find the phases and calculate theta values
-        # k
-        phik = np.angle(ps[ka==ky,ka_half==kx])[0]
+    ####### thetauuu
+    ## Define thetauuu
+    thetas = phiks+phips+phiqs
+    thetas = thetas - 2*np.pi*np.round(thetas/np.pi/2) # From [-pi,pi]
+    # Remove thetas where one or more rhos == 0.
+    valid_indices = np.where(np.abs(rhoks*rhoqs*rhops)>0)[0]
+    thetas_valid = thetas[valid_indices]
+    # Find which 'bin' of the theta pdf it should go into and add one to the histogram
+    # Shift thetas to the [0, 2pi) range
+    shifted_thetas = (thetas_valid + np.pi) % (2 * np.pi)
+    # Compute bin indices
+    bin_indices = np.floor(shifted_thetas / dtheta).astype(int)
+    # Add one to the correct bin in the histogram
+    thetauuu[bin_indices, valid_indices] += 1
     
-        # p
-        if (px>=0): # phi(py,px)
-            sgn=1.0
-        else: # -phi(-py,-px)
-            py=-py
-            px=-px
-            sgn=-1.0
-        phip = sgn*np.angle(ps[ka==py,ka_half==px])[0]
-        
-        # q
-        if (qx>=0): # phi(qy,qx)
-            sgn=1.0
-        else: # -phi(-qy,-qx)
-            qy=-qy
-            qx=-qx
-            sgn=-1.0
-        phiq = sgn*np.angle(ps[ka==qy,ka_half==qx])[0]
-        
-        # Only add to histogram if rhos > 0:
-        if ((np.abs(ps[ka==ky,ka_half==kx])[0]>0)&(np.abs(ps[ka==py,ka_half==px])[0]>0)&(np.abs(ps[ka==qy,ka_half==qx])[0]>0)):
-            ### Define thetauuu
-            theta = phik + phiq + phiq
-            theta = theta - 2*np.pi*np.round(theta/np.pi/2) # From [-pi,pi]
-            
-            # Find which 'bin' of the theta pdf it should go into and add one to the histogram
-            thetauuu[np.argmin(np.abs(theta-bins_centered)),Ntr] += 1
-            
-            ### ScriptK average
-            scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*((np.abs(ps[ka==qy,ka_half==qx])[0]*np.abs(ps[ka==py,ka_half==px])[0])/(np.abs(ps[ka==ky,ka_half==kx])[0])) + ((pmag**2-kmag**2)/(qmag**2))*((np.abs(ps[ka==py,ka_half==px])[0]*np.abs(ps[ka==ky,ka_half==kx])[0])/(np.abs(ps[ka==qy,ka_half==qx])[0])) + ((kmag**2-qmag**2)/(pmag**2))*((np.abs(ps[ka==ky,ka_half==kx])[0]*np.abs(ps[ka==qy,ka_half==qx])[0])/(np.abs(ps[ka==py,ka_half==px])[0]))
-            # Normalize based on grid
-            scriptK_tmp = scriptK_tmp * tmp
-            
-            ## Calculate the mean
-            scriptK_avg_tmp = scriptK[0,Ntr] + (scriptK_tmp - scriptK[0,Ntr])/i_count
-            
-            ## Update the variance
-            scriptK[1,Ntr] = scriptK[1,Ntr] + ((scriptK_tmp-scriptK[0,Ntr])*(scriptK_tmp-scriptK_avg_tmp) - scriptK[1,Ntr])/i_count
-            
-            ## Update the mean
-            scriptK[0,Ntr] = scriptK_avg_tmp
+    ####### ScriptK average
+    # scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*np.abs((rhoqs*rhops)/(rhoks)) + ((pmag**2-kmag**2)/(qmag**2))*np.abs((rhoks*rhops)/(rhoqs)) + ((kmag**2-qmag**2)/(pmag**2))*np.abs((rhoks*rhoqs)/(rhops))
+    scriptK_tmp = scriptK_calc(kmag,pmag,qmag,rhoks,rhops,rhoqs)
+    # Normalize based on grid
+    scriptK_tmp = scriptK_tmp * tmp
+    
+    ## Calculate the mean
+    scriptK_avg_tmp = scriptK[0,:] + (scriptK_tmp - scriptK[0,:])/i_count
+    
+    ## Update the variance
+    scriptK[1,:] = scriptK[1,:] + ((scriptK_tmp-scriptK[0,:])*(scriptK_tmp-scriptK_avg_tmp) - scriptK[1,:])/i_count
+    
+    ## Update the mean
+    scriptK[0,:] = scriptK_avg_tmp
                        
     return i_count,thetauuu,scriptK
 
