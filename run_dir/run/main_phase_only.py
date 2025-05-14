@@ -55,6 +55,50 @@ if triad_phase_hist:
     triads_ts = np.loadtxt(idir+'/triads_ts.txt')
     Ntriads_ts = triads_ts.shape[0]
     print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
+
+    # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
+    # To be used in thetauuu_calc
+    indKX = np.zeros((n_half,Ntriads))
+    indKY = np.zeros((Ntriads,n))
+    indPX = np.zeros((n_half,Ntriads))
+    indPY = np.zeros((Ntriads,n))
+    indQX = np.zeros((n_half,Ntriads))
+    indQY = np.zeros((Ntriads,n))
+    kmag = np.zeros((Ntriads))
+    pmag = np.zeros((Ntriads))
+    qmag = np.zeros((Ntriads))
+    for Ntr,triad in enumerate(triads):
+        kx,ky,px,py = triad
+        qx = -kx-px
+        qy = -ky-py
+        # Magnitudes
+        kmag[Ntr] = np.sqrt(kx**2+ky**2)
+        pmag[Ntr] = np.sqrt(px**2+py**2)
+        qmag[Ntr] = np.sqrt(qx**2+qy**2)
+    
+        # k
+        indKY[Ntr,ka==ky] = 1.0
+        indKX[ka_half==kx,Ntr] = 1.0
+    
+        # p
+        if (px>=0): # phi(py,px)
+            sgn=1.0
+        else: # -phi(-py,-px)
+            py=-py
+            px=-px
+            sgn=-1.0
+        indPY[Ntr,ka==py] = sgn
+        indPX[ka_half==px,Ntr] = 1.0
+        
+        # q
+        if (qx>=0): # phi(qy,qx)
+            sgn=1.0
+        else: # -phi(-qy,-qx)
+            qy=-qy
+            qx=-qx
+            sgn=-1.0
+        indQY[Ntr,ka==qy] = sgn
+        indQX[ka_half==qx,Ntr] = 1.0
     
 # Builds the wave number and the square wave number matrixes
 # In spectral space, index 0 is the ky axis, index 1 is the kx axis
@@ -174,7 +218,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     if ((timeth==thstep)&(triad_phase_hist)): 
         timeth = 0
         # Updates thetauuu
-        i_count,thetauuu,scriptK = thetauuu_calc(ps,triads,i_count,thetauuu,scriptK,ka,ka_half)
+        i_count,thetauuu,scriptK = thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
         
     # Every 'tstep' steps, stores the results of the integration
     if timet==tstep:
