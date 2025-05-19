@@ -368,7 +368,7 @@ def cond_check(ps,fp,time,ka2):
     """
     # Energy budget
     en = energy(ps,1,ka2) # |u|^2
-    if fp==None:
+    if np.all(fp==None):
         inj = np.nan
     else:
         inj = inerprod(ps,fp,1,ka2) # energy injection
@@ -377,7 +377,7 @@ def cond_check(ps,fp,time,ka2):
 
     # Enstrophy budget
     enst = energy(ps,2,ka2) # |omega|^2
-    if fp==None:
+    if np.all(fp==None):
         inj_enst = np.nan
     else:
         inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
@@ -593,7 +593,7 @@ def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
     
     # Load file listing triads.
     for Ntr,triad in enumerate(triads_ts):
-        kx,ky,px,py = triad
+        ky,kx,py,px = triad # Transposing because ps is transposed.
         qx = -kx-px
         qy = -ky-py
         # Magnitudes
