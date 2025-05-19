@@ -36,6 +36,16 @@ if num_args>1:
 
 # Initialize random number generator (using numpy because it's faster)
 rng = numpy.random.default_rng(seed)
+    
+# Builds the wave number and the square wave number matrixes
+# In spectral space, index 0 is the ky axis, index 1 is the kx axis
+# In real space, index 0 is the y axis, index 1 is the x axis
+ka = np.fft.fftfreq(n,d=(1/n)) # ky
+ka_half = np.fft.rfftfreq(n,d=(1/n)) # kx
+KY,KX = np.meshgrid(ka,ka_half,indexing='ij')
+ka2 = KX**2+KY**2
+# Imaginary matrix
+I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
@@ -68,7 +78,7 @@ if triad_phase_hist:
     pmag = np.zeros((Ntriads))
     qmag = np.zeros((Ntriads))
     for Ntr,triad in enumerate(triads):
-        kx,ky,px,py = triad
+        ky,kx,py,px = triad # Transposing because ps is transposed.
         qx = -kx-px
         qy = -ky-py
         # Magnitudes
@@ -99,16 +109,6 @@ if triad_phase_hist:
             sgn=-1.0
         indQY[Ntr,ka==qy] = sgn
         indQX[ka_half==qx,Ntr] = 1.0
-    
-# Builds the wave number and the square wave number matrixes
-# In spectral space, index 0 is the ky axis, index 1 is the kx axis
-# In real space, index 0 is the y axis, index 1 is the x axis
-ka = np.fft.fftfreq(n,d=(1/n)) # ky
-ka_half = np.fft.rfftfreq(n,d=(1/n)) # kx
-KY,KX = np.meshgrid(ka,ka_half,indexing='ij')
-ka2 = KX**2+KY**2
-# Imaginary matrix
-I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
 ##########################
 ### INITIAL CONDITIONS ###
