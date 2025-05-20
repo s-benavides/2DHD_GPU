@@ -38,11 +38,11 @@ if num_args>1:
 rng = numpy.random.default_rng(seed)
     
 # Builds the wave number and the square wave number matrixes
-# In spectral space, index 0 is the ky axis, index 1 is the kx axis
-# In real space, index 0 is the y axis, index 1 is the x axis
-ka = np.fft.fftfreq(n,d=(1/n)) # ky
-ka_half = np.fft.rfftfreq(n,d=(1/n)) # kx
-KY,KX = np.meshgrid(ka,ka_half,indexing='ij')
+# In spectral space, index 0 is the kx axis, index 1 is the ky axis
+# In real space, index 0 is the x axis, index 1 is the y axis
+ka = np.fft.fftfreq(n,d=(1/n)) # kx
+ka_half = np.fft.rfftfreq(n,d=(1/n)) # ky
+KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
 I = 1j*np.ones((n,n_half),dtype=np.complex128)# If recording triad statistics, load relevant information
@@ -67,17 +67,17 @@ if triad_phase_hist:
     
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
-    indKX = np.zeros((n_half,Ntriads))
-    indKY = np.zeros((Ntriads,n))
-    indPX = np.zeros((n_half,Ntriads))
-    indPY = np.zeros((Ntriads,n))
-    indQX = np.zeros((n_half,Ntriads))
-    indQY = np.zeros((Ntriads,n))
+    indKX = np.zeros((Ntriads,n))
+    indKY = np.zeros((n_half,Ntriads))
+    indPX = np.zeros((Ntriads,n))
+    indPY = np.zeros((n_half,Ntriads))
+    indQX = np.zeros((Ntriads,n))
+    indQY = np.zeros((n_half,Ntriads))
     kmag = np.zeros((Ntriads))
     pmag = np.zeros((Ntriads))
     qmag = np.zeros((Ntriads))
     for Ntr,triad in enumerate(triads):
-        ky,kx,py,px = triad # Transposing because ps is transposed.
+        kx,ky,px,py = triad 
         qx = -kx-px
         qy = -ky-py
         # Magnitudes
@@ -86,28 +86,34 @@ if triad_phase_hist:
         qmag[Ntr] = np.sqrt(qx**2+qy**2)
     
         # k
-        indKY[Ntr,ka==ky] = 1.0
-        indKX[ka_half==kx,Ntr] = 1.0
+        if (ky>=0): # phi(kx,ky)
+            sgn=1.0
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1.0
+        indKX[Ntr,ka==kx] = sgn
+        indKY[ka_half==ky,Ntr] = 1.0
     
         # p
-        if (px>=0): # phi(py,px)
+        if (py>=0): # phi(px,py)
             sgn=1.0
-        else: # -phi(-py,-px)
+        else: # -phi(-px,-py)
             py=-py
             px=-px
             sgn=-1.0
-        indPY[Ntr,ka==py] = sgn
-        indPX[ka_half==px,Ntr] = 1.0
+        indPX[Ntr,ka==px] = sgn
+        indPY[ka_half==py,Ntr] = 1.0
         
         # q
-        if (qx>=0): # phi(qy,qx)
+        if (qy>=0): # phi(qx,qy)
             sgn=1.0
-        else: # -phi(-qy,-qx)
+        else: # -phi(-qx,-qy)
             qy=-qy
             qx=-qx
             sgn=-1.0
-        indQY[Ntr,ka==qy] = sgn
-        indQX[ka_half==qx,Ntr] = 1.0
+        indQX[Ntr,ka==qx] = sgn
+        indQY[ka_half==qy,Ntr] = 1.0
 
 ##########################
 ### INITIAL CONDITIONS ###
@@ -130,7 +136,7 @@ if stat==0:
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
     ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     ps[n_half:,0] = np.flip(np.conj(ps[1:n_half-1,0]))
     ps[0,0] = ps[n_half-1,0] = 0.0
     
@@ -195,7 +201,7 @@ if iflow==1:
         phase = rng2.uniform(low=-np.pi,high=np.pi,size=fp.shape)
     phase = np.asarray(phase)
     fp[cond] = (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
     fp[0,0] = fp[n_half-1,0] = 0.0
     
@@ -332,5 +338,7 @@ if os.path.isfile('./RUNNING.txt'):
 
 # Delete variables (might not be necessary...)
 del ps,fp,R1,C3,ka2,KX,KY,nl
-
+if triad_phase_hist:
+    del indKX,indKY,indPX,indPY,indQX,indQY
+    
 print('Finished saving. Exiting... \n \n',flush=True)
