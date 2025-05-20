@@ -262,7 +262,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         R1 = np.fft.irfftn(ps)
         np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
         
-        R1 = np.fft.irfftn(laplak2(ps,ka2))
+        R1 = np.fft.irfftn(-laplak2(ps,ka2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
         
         # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
@@ -313,7 +313,7 @@ print("Saving files last time... Stat = %s, iteration = %s, time = %.4e" % (stat
 R1 = np.fft.irfftn(ps)
 np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 
-R1 = np.fft.irfftn(laplak2(ps,ka2))
+R1 = np.fft.irfftn(-laplak2(ps,ka2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
 
 # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
