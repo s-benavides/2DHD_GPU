@@ -289,7 +289,7 @@ def const_inj(ps,ka2,rng):
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
     # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
     fp[cond]=ps[cond]/(np.abs(ps[cond])+1.0)
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
     fp[0,0] = fp[n_half-1,0] = 0.0
 
@@ -300,7 +300,7 @@ def const_inj(ps,ka2,rng):
     tmp = np.asarray(tmp)*np.sqrt(ka2)
     
     fp[cond] = fp[cond]*fp0/E + 1j*tmp[cond]*ps[cond]
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
     fp[0,0] = fp[n_half-1,0] = 0.0
     
@@ -323,8 +323,8 @@ def rand_force(dt,ka2,ka,ka_half,rng):
      fp : forcing function
     """
     ## Choose random vector of length kup and a random phase
-    # theta = np.arctan(kx/ky), theta between -pi/2 and pi/2. Choosing this range so that kx > 0, which is the case for us.
-    theta = rng.uniform(low=-numpy.pi/2,high=numpy.pi/2)
+    # theta = np.arctan(ky/kx), theta between 0 and pi. Choosing this range so that ky > 0, which is the case for the rfftn in numpy/cupy.
+    theta = rng.uniform(low=0,high=numpy.pi)
     # Complex phase of mode. Between -pi and pi.
     phase = rng.uniform(low=-numpy.pi,high=numpy.pi)
     # kx
@@ -337,14 +337,14 @@ def rand_force(dt,ka2,ka,ka_half,rng):
 
     # Build fp
     fp = np.zeros((n,n_half),dtype=np.complex128)
-    if ky>=0:
-        indy = ky
+    if kx>=0:
+        indx = kx
     else:
-        indy = n+ky
-    fp[indy,kx] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[indy,kx])
-    # Ensure 'realness' in the kx = 0 axis, but make sure not to remove the only mode that is nonzero.
-    if kx==0:
-        fp[n-indy,0]=np.conj(fp[indy,0])
+        indx = n+kx
+    fp[indx,ky] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[indx,ky])
+    # Ensure 'realness' in the ky = 0 axis, but make sure not to remove the only mode that is nonzero.
+    if ky==0:
+        fp[n-indx,0]=np.conj(fp[indx,0])
     fp[0,0] = fp[n_half-1,0] = 0.0
 
     return fp
@@ -520,13 +520,13 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY
 
     # Isolate individual triad rhos and phis
     rhos = np.abs(ps)
-    rhoks = np.diag(np.dot(np.dot(indKY,rhos),indKX))
-    rhops = np.diag(np.dot(np.dot(indPY,rhos),indPX))
-    rhoqs = np.diag(np.dot(np.dot(indQY,rhos),indQX))
+    rhoks = np.diag(np.dot(np.dot(indKX,rhos),indKY))
+    rhops = np.diag(np.dot(np.dot(indPX,rhos),indPY))
+    rhoqs = np.diag(np.dot(np.dot(indQX,rhos),indQY))
     phis = np.angle(ps)
-    phiks = np.diag(np.dot(np.dot(indKY,phis),indKX))
-    phips = np.diag(np.dot(np.dot(indPY,phis),indPX))
-    phiqs = np.diag(np.dot(np.dot(indQY,phis),indQX))
+    phiks = np.diag(np.dot(np.dot(indKX,phis),indKY))
+    phips = np.diag(np.dot(np.dot(indPX,phis),indPY))
+    phiqs = np.diag(np.dot(np.dot(indQX,phis),indQY))
     
     ####### thetauuu
     ## Define thetauuu
@@ -593,7 +593,7 @@ def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
     
     # Load file listing triads.
     for Ntr,triad in enumerate(triads_ts):
-        ky,kx,py,px = triad # Transposing because ps is transposed.
+        kx,ky,px,py = triad 
         qx = -kx-px
         qy = -ky-py
         # Magnitudes
@@ -603,28 +603,34 @@ def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
     
         ## Find the phases and calculate theta values
         # k
-        phik = np.angle(ps[ka==ky,ka_half==kx])[0]
-        dt_phik = dphidt[ka==ky,ka_half==kx][0]
+        if (ky>=0): # phi(kx,ky)
+            sgn=1.0
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1.0
+        phik = sgn*np.angle(ps[ka==kx,ka_half==ky])[0]
+        dt_phik = sgn*dphidt[ka==kx,ka_half==ky][0]
     
         # p
-        if (px>=0): # phi(py,px)
+        if (py>=0): # phi(px,py)
             sgn=1.0
-        else: # -phi(-py,-px)
+        else: # -phi(-px,-py)
             py=-py
             px=-px
             sgn=-1.0
-        phip = sgn*np.angle(ps[ka==py,ka_half==px])[0]
-        dt_phip = sgn*dphidt[ka==py,ka_half==px][0]
+        phip = sgn*np.angle(ps[ka==px,ka_half==py])[0]
+        dt_phip = sgn*dphidt[ka==px,ka_half==py][0]
         
         # q
-        if (qx>=0): # phi(qy,qx)
+        if (qy>=0): # phi(qx,qy)
             sgn=1.0
-        else: # -phi(-qy,-qx)
+        else: # -phi(-qx,-qy)
             qy=-qy
             qx=-qx
             sgn=-1.0
-        phiq = sgn*np.angle(ps[ka==qy,ka_half==qx])[0]
-        dt_phiq = sgn*dphidt[ka==qy,ka_half==qx][0]
+        phiq = sgn*np.angle(ps[ka==qx,ka_half==qy])[0]
+        dt_phiq = sgn*dphidt[ka==qx,ka_half==qy][0]
     
         # Define thetauuu
         theta = phik + phiq + phiq
@@ -632,13 +638,13 @@ def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
         corr_dat[0,Ntr] = theta
     
         # Define triad energy
-        R_tr = np.abs(ps[ka==ky,ka_half==kx])[0]*np.abs(ps[ka==py,ka_half==px])[0]*np.abs(ps[ka==qy,ka_half==qx])[0]*tmp**3 # Normalizing based on grid
+        R_tr = np.abs(ps[ka==kx,ka_half==ky])[0]*np.abs(ps[ka==px,ka_half==py])[0]*np.abs(ps[ka==qx,ka_half==qy])[0]*tmp**3 # Normalizing based on grid
         corr_dat[1,Ntr] = R_tr
 
         # Only add to histogram if rhos > 0:
-        if ((np.abs(ps[ka==ky,ka_half==kx])[0]>0)&(np.abs(ps[ka==py,ka_half==px])[0]>0)&(np.abs(ps[ka==qy,ka_half==qx])[0]>0)):
+        if ((np.abs(ps[ka==kx,ka_half==ky])[0]>0)&(np.abs(ps[ka==px,ka_half==py])[0]>0)&(np.abs(ps[ka==qx,ka_half==qy])[0]>0)):
             # Define coefficient scriptK (in front of self-interaction term)
-            scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*((np.abs(ps[ka==qy,ka_half==qx])[0]*np.abs(ps[ka==py,ka_half==px])[0])/(np.abs(ps[ka==ky,ka_half==kx])[0])) + ((pmag**2-kmag**2)/(qmag**2))*((np.abs(ps[ka==py,ka_half==px])[0]*np.abs(ps[ka==ky,ka_half==kx])[0])/(np.abs(ps[ka==qy,ka_half==qx])[0])) + ((kmag**2-qmag**2)/(pmag**2))*((np.abs(ps[ka==ky,ka_half==kx])[0]*np.abs(ps[ka==qy,ka_half==qx])[0])/(np.abs(ps[ka==py,ka_half==px])[0]))
+            scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*((np.abs(ps[ka==qx,ka_half==qy])[0]*np.abs(ps[ka==px,ka_half==py])[0])/(np.abs(ps[ka==kx,ka_half==ky])[0])) + ((pmag**2-kmag**2)/(qmag**2))*((np.abs(ps[ka==px,ka_half==py])[0]*np.abs(ps[ka==kx,ka_half==ky])[0])/(np.abs(ps[ka==qx,ka_half==qy])[0])) + ((kmag**2-qmag**2)/(pmag**2))*((np.abs(ps[ka==kx,ka_half==ky])[0]*np.abs(ps[ka==qx,ka_half==qy])[0])/(np.abs(ps[ka==px,ka_half==py])[0]))
             # Multilpy by -qxp to make it the coefficient of dt(theta)
             scriptK_tmp = -(qx*py-qy*px) * scriptK_tmp
             # Normalize based on grid
