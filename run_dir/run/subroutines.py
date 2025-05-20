@@ -368,7 +368,7 @@ def cond_check(ps,fp,time,ka2):
     """
     # Energy budget
     en = energy(ps,1,ka2) # |u|^2
-    if np.all(fp==None):
+    if fp is None:
         inj = np.nan
     else:
         inj = inerprod(ps,fp,1,ka2) # energy injection
@@ -377,7 +377,7 @@ def cond_check(ps,fp,time,ka2):
 
     # Enstrophy budget
     enst = energy(ps,2,ka2) # |omega|^2
-    if np.all(fp==None):
+    if fp is None:
         inj_enst = np.nan
     else:
         inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
