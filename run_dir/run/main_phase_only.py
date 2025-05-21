@@ -45,8 +45,9 @@ ka_half = np.fft.rfftfreq(n,d=(1/n)) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
-I = 1j*np.ones((n,n_half),dtype=np.complex128)# If recording triad statistics, load relevant information
+I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
+# If recording triad statistics, load relevant information
 if triad_phase_hist:
     # Load triads for histogram
     triads = np.loadtxt(idir+'/triads.txt')
@@ -64,7 +65,7 @@ if triad_phase_hist:
     triads_ts = np.loadtxt(idir+'/triads_ts.txt')
     Ntriads_ts = triads_ts.shape[0]
     print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
-    
+
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
     indKX = np.zeros((Ntriads,n))
@@ -128,13 +129,16 @@ if stat==0:
     timet = tstep
     timec = cstep
     times = sstep
+    timeth = thstep
 
     # Stream function IC (random phase up to kup)
     ps = np.zeros((n,n_half),dtype=complex)
     cond = (ka2<=kmax)&(ka2>=tiny)
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
-    ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
+    ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond])) 
+    cond = (ka2>kup**2)&(ka2<=kmax)
+    ps[cond] = (np.sqrt(ka2[cond])/kup)**((-beta-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
     # Ensure 'realness' in the ky = 0 axis:
     ps[n_half:,0] = np.flip(np.conj(ps[1:n_half-1,0]))
     ps[0,0] = ps[n_half-1,0] = 0.0
@@ -146,6 +150,7 @@ else:
     ini = int((stat-1)*tstep)
     dump = float(ini)/float(sstep)+1
     times = 0
+    timeth = 0
     timet = 0
     timec = 0
     timecorr = 0
@@ -180,45 +185,12 @@ else:
 
 print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
 
-###############
-### FORCING ###
-###############
-dt = CFL_condition(ps,KX,KY,I)
-if iflow==1:
-    # Stream function forcing (kdn to kup)
-    fp = np.zeros((n,n_half),dtype=complex)
-    cond = (ka2<=kup**2)&(ka2>=kdn**2)
-    if num_args>1:
-        # If we're doing an ensemble run, where we change the seed by
-        # feeding arguments to the execution, then we add a random
-        # phase at the beginning of each run.
-        phase = rng.uniform(low=-np.pi,high=np.pi,size=fp.shape)
-    else:
-        # Otherwise, go with a random phase which is the same for every run.
-        rng2 = np.random.default_rng(1)
-        phase = rng2.uniform(low=-np.pi,high=np.pi,size=fp.shape)
-    phase = np.asarray(phase)
-    fp[cond] = (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
-    # Ensure 'realness' in the ky = 0 axis:
-    fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
-    fp[0,0] = fp[n_half-1,0] = 0.0
-    
-    # Renormalize
-    E = energy(fp,1,ka2)
-    fp *= fp0/np.sqrt(E)
-    
-elif iflow==2:
-    fp = const_inj(ps,ka2,rng)
-elif iflow==3:
-    fp = rand_force(dt,ka2,ka,ka_half,rng)
-else:
-    sys.exit('ERROR. The variable iflow must be either 1, 2, or 3. Stopping simulation.')
-
 #################
 ### MAIN LOOP ###
 #################
 start_time=time_wall.time()
 sim_end = start_time + 60*60*H # run for H hours
+dt = CFL_condition(ps,KX,KY,I)
 t = ini
 while (time_wall.time() < sim_end)&(t<=step):
     if (t%cfl_cad)==0: # Update dt every cfl_cad time steps.
@@ -228,7 +200,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     # See the cond_check subroutine for details.
     if timec==cstep:
         timec = 0
-        cond_check(ps,fp,time,ka2)
+        cond_check(ps,None,time,ka2)
         if triad_phase_hist:
             # Output time series of triad energy and p hase for various triads.
             corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts)
@@ -238,11 +210,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         if not os.path.isfile('./RUNNING.txt'):
             print("RUNNING.txt has been deleted. Stopping run. tstep = %s time = %s" % (t,time),flush=True)
             break
-
-    # Random force
-    if iflow==3:
-        fp = rand_force(dt,ka2,ka,ka_half,rng)
-
+            
     # Every 'sstep' steps, generates external files with the power spectrum
     if times==sstep:
         times = 0
@@ -269,24 +237,28 @@ while (time_wall.time() < sim_end)&(t<=step):
         R1 = np.fft.irfftn(-laplak2(ps,ka2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
         
+        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+        if triad_phase_hist:
+            np.save(odir+'/thetauuu.npy',thetauuu)
+            np.save(odir+'/scriptK.npy',scriptK)
+            np.save(odir+'/i_count.npy',i_count)
+            
+        
         with open('./time_field.txt', 'a') as f:
             f.write(f"{int(stat):03} {time:14.6F}\n")
 
+    ## Phase-only time-stepping
     ######## Runge-Kutta step 1
     C3 = np.copy(ps)
     
     ######## Runge-Kutta step 2
     for o in range(ord,0,-1):
-        # Iflow2: change forcing to keep constant energy
-        if iflow==2:
-            fp = const_inj(C3,ka2,rng)
-            
         # Nonlinear term
         nl = laplak2(C3,ka2) # Makes -w_2D
         nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
         tmp1 = dt/float(o)
-        C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
+        C3 = NL_phase_only(ps,C3,nl,tmp1,ka2,kmax,I)
         
     ######## Runge-Kutta step 3
     ps = np.copy(C3)
@@ -295,6 +267,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     t += 1 
     timet += 1
     times += 1
+    timeth += 1
     timec += 1
     time += dt   
     
@@ -312,6 +285,13 @@ np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 R1 = np.fft.irfftn(-laplak2(ps,ka2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
 
+# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+if triad_phase_hist:
+    np.save(odir+'/thetauuu.npy',thetauuu)
+    np.save(odir+'/scriptK.npy',scriptK)
+    np.save(odir+'/i_count.npy',i_count)
+    
+
 with open('./time_field.txt', 'a') as f:
     f.write(f"{int(stat):03} {time:14.6F}\n")
 
@@ -320,8 +300,8 @@ if os.path.isfile('./RUNNING.txt'):
     os.remove('./RUNNING.txt')
 
 # Delete variables (might not be necessary...)
-del ps,fp,R1,C3,ka2,KX,KY,nl
+del ps,R1,C3,ka2,KX,KY,nl
 if triad_phase_hist:
     del indKX,indKY,indPX,indPY,indQX,indQY
-    
+
 print('Finished saving. Exiting... \n \n',flush=True)

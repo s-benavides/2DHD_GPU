@@ -104,6 +104,18 @@ NL = np.ElementwiseKernel(
    """,
    'NL')
 
+NL_phase_only = np.ElementwiseKernel(
+   'complex128 ps, complex128 in, complex128 nl, float64 tmp1, float64 ka2, float64 kmax, complex128 I',
+   'complex128 out',
+   """
+    if (ka2 > kmax || ka2 == 0 || abs(in) == 0 ) {
+       out = 0;
+    } else {
+       out = abs(ps)*exp(I*(atan2(imag(ps), real(ps)) + tmp1*imag(exp(-I*atan2(imag(in), real(in)))*(-nl/ka2)/abs(in))));
+    }
+   """,
+   'NL_phase_only')
+
 # """
 # Used in corr_check
 # """
@@ -118,6 +130,21 @@ dphi_dt = np.ElementwiseKernel(
     }
    """,
    'dphi_dt')
+
+# """
+# scriptK calculations
+# """
+scriptK_calc = np.ElementwiseKernel(
+   'float64 kmag, float64 pmag, float64 qmag,float64 rhoks, float64 rhops, float64 rhoqs',
+   'float64 out',
+    """
+    if (abs(rhoqs*rhops*rhoks) > 0) {
+       out = ((pow(qmag,2.0)-pow(pmag,2.0))/(pow(kmag,2.0)))*abs((rhoqs*rhops)/(rhoks)) + ((pow(pmag,2.0)-pow(kmag,2.0))/(pow(qmag,2.0)))*abs((rhoks*rhops)/(rhoqs)) + ((pow(kmag,2.0)-pow(qmag,2.0))/(pow(pmag,2.0)))*abs((rhoks*rhoqs)/(rhops));
+    } else {
+        out = 0.0;
+    }
+    """,
+   'scriptK_calc')
 
 ###########################
 ### Spectral operations ###
@@ -179,6 +206,7 @@ def poisson(a,b,ka2,KX,KY,I):
      ka2: the square of the wave vector
      KX : wave-vector kx
      KY : wave-vector ky
+     I : Imaginary matrix.
 
     RETURNS
      c: Poisson bracket {a,b} [output]
@@ -245,7 +273,7 @@ def const_inj(ps,ka2,rng):
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
     # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
     fp[cond]=ps[cond]/(np.abs(ps[cond])+1.0)
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
     fp[0,0] = fp[n_half-1,0] = 0.0
 
@@ -256,7 +284,7 @@ def const_inj(ps,ka2,rng):
     tmp = np.asarray(tmp)*np.sqrt(ka2)
     
     fp[cond] = fp[cond]*fp0/E + 1j*tmp[cond]*ps[cond]
-    # Ensure 'realness' in the kx = 0 axis:
+    # Ensure 'realness' in the ky = 0 axis:
     fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
     fp[0,0] = fp[n_half-1,0] = 0.0
     
@@ -271,14 +299,16 @@ def rand_force(dt,ka2,ka,ka_half,rng):
     ARGUMENTS
      dt : time step
      ka2: the square of the wave vector
+     ka : wavenumbers
+     ka_half: half wavenumbers
      rng: random numbers
 
     RETURNS
      fp : forcing function
     """
     ## Choose random vector of length kup and a random phase
-    # theta = np.arctan(kx/ky), theta between -pi/2 and pi/2. Choosing this range so that kx > 0, which is the case for us.
-    theta = rng.uniform(low=-numpy.pi/2,high=numpy.pi/2)
+    # theta = np.arctan(ky/kx), theta between 0 and pi. Choosing this range so that ky > 0, which is the case for the rfftn in numpy/cupy.
+    theta = rng.uniform(low=0,high=numpy.pi)
     # Complex phase of mode. Between -pi and pi.
     phase = rng.uniform(low=-numpy.pi,high=numpy.pi)
     # kx
@@ -291,14 +321,14 @@ def rand_force(dt,ka2,ka,ka_half,rng):
 
     # Build fp
     fp = np.zeros((n,n_half),dtype=np.complex128)
-    if ky>=0:
-        indy = ky
+    if kx>=0:
+        indx = kx
     else:
-        indy = n+ky
-    fp[indy,kx] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[indy,kx])
-    # Ensure 'realness' in the kx = 0 axis, but make sure not to remove the only mode that is nonzero.
-    if kx==0:
-        fp[n-indy,0]=np.conj(fp[indy,0])
+        indx = n+kx
+    fp[indx,ky] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[indx,ky])
+    # Ensure 'realness' in the ky = 0 axis, but make sure not to remove the only mode that is nonzero.
+    if ky==0:
+        fp[n-indx,0]=np.conj(fp[indx,0])
     fp[0,0] = fp[n_half-1,0] = 0.0
 
     return fp
@@ -322,13 +352,19 @@ def cond_check(ps,fp,time,ka2):
     """
     # Energy budget
     en = energy(ps,1,ka2) # |u|^2
-    inj = inerprod(ps,fp,1,ka2) # energy injection
+    if fp is None:
+        inj = np.nan
+    else:
+        inj = inerprod(ps,fp,1,ka2) # energy injection
     diss = nu*energy(ps,nn+1,ka2) # dissipation
     hdiss = hnu*energy(ps,1-mm,ka2) # hypodissipation
 
     # Enstrophy budget
     enst = energy(ps,2,ka2) # |omega|^2
-    inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
+    if fp is None:
+        inj_enst = np.nan
+    else:
+        inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
     diss_enst = nu*energy(ps,nn+2,ka2) # enstrophy dissipation
     hdiss_enst = hnu*energy(ps,2-mm,ka2) # enstrophy hypodissipation
 
@@ -393,6 +429,7 @@ def transfers(ps,dump,ka2,KX,KY,I):
      ka2: the square of the wave vector
      KX : wave-vector kx
      KY : wave-vector ky
+     I : Imaginary matrix.
 
     RETURNS
      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
@@ -437,3 +474,176 @@ def transfers(ps,dump,ka2,KX,KY,I):
             f.write(f"{pi_enst[i]:24.15E} {pi_en[i]:24.15E}\n")
         
     return
+
+def thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag):
+    """
+    Updates the histogram for theta and scriptK, as well as updates the count for the averaging. 
+
+    ARGUMENTS
+     ps  : streamfunction
+     triads : list of triads loaded at beginning of simulation
+     i_count : count for statistics
+     thetauuu : the PDF of the triad phases
+     scriptK : the average value and variance of the K coefficient
+     ka : wavenumbers
+     ka_half: half wavenumbers
+     ind*: array used to isolate triads through dot products (to avoid for-loops).
+     *mag: magnitudes of triads
+    
+    RETURNS
+     [i_count, thetauuu, scriptK]
+    """    
+    tmp = 1/n**2
+    
+    # Update counter:
+    i_count += 1
+    
+    # Build the bin centers
+    dtheta = 2*np.pi/Nbins
+    bins_centered = -np.pi + dtheta/2 + dtheta*np.arange(Nbins)
+
+    # Isolate individual triad rhos and phis
+    rhos = np.abs(ps)
+    rhoks = np.diag(np.dot(np.dot(indKX,rhos),indKY))
+    rhops = np.diag(np.dot(np.dot(indPX,rhos),indPY))
+    rhoqs = np.diag(np.dot(np.dot(indQX,rhos),indQY))
+    phis = np.angle(ps)
+    phiks = np.diag(np.dot(np.dot(indKX,phis),indKY))
+    phips = np.diag(np.dot(np.dot(indPX,phis),indPY))
+    phiqs = np.diag(np.dot(np.dot(indQX,phis),indQY))
+    
+    ####### thetauuu
+    ## Define thetauuu
+    thetas = phiks+phips+phiqs
+    thetas = thetas - 2*np.pi*np.round(thetas/np.pi/2) # From [-pi,pi]
+    # Remove thetas where one or more rhos == 0.
+    valid_indices = np.where(np.abs(rhoks*rhoqs*rhops)>0)[0]
+    thetas_valid = thetas[valid_indices]
+    # Find which 'bin' of the theta pdf it should go into and add one to the histogram
+    # Shift thetas to the [0, 2pi) range
+    shifted_thetas = (thetas_valid + np.pi) % (2 * np.pi)
+    # Compute bin indices
+    bin_indices = np.floor(shifted_thetas / dtheta).astype(int)
+    # Add one to the correct bin in the histogram
+    thetauuu[bin_indices, valid_indices] += 1
+    
+    ####### ScriptK average
+    # scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*np.abs((rhoqs*rhops)/(rhoks)) + ((pmag**2-kmag**2)/(qmag**2))*np.abs((rhoks*rhops)/(rhoqs)) + ((kmag**2-qmag**2)/(pmag**2))*np.abs((rhoks*rhoqs)/(rhops))
+    scriptK_tmp = scriptK_calc(kmag,pmag,qmag,rhoks,rhops,rhoqs)
+    # Normalize based on grid
+    scriptK_tmp = scriptK_tmp * tmp
+    
+    ## Calculate the mean
+    scriptK_avg_tmp = scriptK[0,:] + (scriptK_tmp - scriptK[0,:])/i_count
+    
+    ## Update the variance
+    scriptK[1,:] = scriptK[1,:] + ((scriptK_tmp-scriptK[0,:])*(scriptK_tmp-scriptK_avg_tmp) - scriptK[1,:])/i_count
+    
+    ## Update the mean
+    scriptK[0,:] = scriptK_avg_tmp
+                       
+    return i_count,thetauuu,scriptK
+
+def corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts):
+    """
+    Calculates theta, dt(theta), the 'noise term' and scriptK for a set of triads, and writes these values to a time series file.
+
+    ARGUMENTS
+     ps  : streamfunction
+     time: time
+     ka2: the square of the wave vector
+     ka : wavenumbers
+     ka_half: half wavenumbers
+     KX : wave-vector kx
+     KY : wave-vector ky
+     I : Imaginary matrix.
+     triads_ts : list of triads loaded at beginning of simulation
+
+    RETURNS
+     Nothing. Saves to file.
+    """
+    Ntriads_ts = triads_ts.shape[0]
+    
+    # Define the time series variable
+    corr_dat = np.zeros((4,Ntriads_ts))
+    
+    # Normalization
+    tmp = 1/n**2
+    
+    # For calculating dt(theta), to be used for the noise term.
+    nl = laplak2(ps,ka2) # Makes -w_2D
+    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+    dphidt = dphi_dt(ps,nl,ka2,kmax,I)
+    
+    # Load file listing triads.
+    for Ntr,triad in enumerate(triads_ts):
+        kx,ky,px,py = triad 
+        qx = -kx-px
+        qy = -ky-py
+        # Magnitudes
+        kmag = np.sqrt(kx**2+ky**2)
+        pmag = np.sqrt(px**2+py**2)
+        qmag = np.sqrt(qx**2+qy**2)
+    
+        ## Find the phases and calculate theta values
+        # k
+        if (ky>=0): # phi(kx,ky)
+            sgn=1.0
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1.0
+        phik = sgn*np.angle(ps[ka==kx,ka_half==ky])[0]
+        dt_phik = sgn*dphidt[ka==kx,ka_half==ky][0]
+    
+        # p
+        if (py>=0): # phi(px,py)
+            sgn=1.0
+        else: # -phi(-px,-py)
+            py=-py
+            px=-px
+            sgn=-1.0
+        phip = sgn*np.angle(ps[ka==px,ka_half==py])[0]
+        dt_phip = sgn*dphidt[ka==px,ka_half==py][0]
+        
+        # q
+        if (qy>=0): # phi(qx,qy)
+            sgn=1.0
+        else: # -phi(-qx,-qy)
+            qy=-qy
+            qx=-qx
+            sgn=-1.0
+        phiq = sgn*np.angle(ps[ka==qx,ka_half==qy])[0]
+        dt_phiq = sgn*dphidt[ka==qx,ka_half==qy][0]
+    
+        # Define thetauuu
+        theta = phik + phiq + phiq
+        theta = theta - 2*np.pi*np.round(theta/np.pi/2) # From [-pi,pi]
+        corr_dat[0,Ntr] = theta
+    
+        # Define triad energy
+        R_tr = np.abs(ps[ka==kx,ka_half==ky])[0]*np.abs(ps[ka==px,ka_half==py])[0]*np.abs(ps[ka==qx,ka_half==qy])[0]*tmp**3 # Normalizing based on grid
+        corr_dat[1,Ntr] = R_tr
+
+        # Only add to histogram if rhos > 0:
+        if ((np.abs(ps[ka==kx,ka_half==ky])[0]>0)&(np.abs(ps[ka==px,ka_half==py])[0]>0)&(np.abs(ps[ka==qx,ka_half==qy])[0]>0)):
+            # Define coefficient scriptK (in front of self-interaction term)
+            scriptK_tmp = ((qmag**2-pmag**2)/(kmag**2))*((np.abs(ps[ka==qx,ka_half==qy])[0]*np.abs(ps[ka==px,ka_half==py])[0])/(np.abs(ps[ka==kx,ka_half==ky])[0])) + ((pmag**2-kmag**2)/(qmag**2))*((np.abs(ps[ka==px,ka_half==py])[0]*np.abs(ps[ka==kx,ka_half==ky])[0])/(np.abs(ps[ka==qx,ka_half==qy])[0])) + ((kmag**2-qmag**2)/(pmag**2))*((np.abs(ps[ka==kx,ka_half==ky])[0]*np.abs(ps[ka==qx,ka_half==qy])[0])/(np.abs(ps[ka==px,ka_half==py])[0]))
+            # Multilpy by -qxp to make it the coefficient of dt(theta)
+            scriptK_tmp = -(qx*py-qy*px) * scriptK_tmp
+            # Normalize based on grid
+            scriptK_tmp = scriptK_tmp * tmp
+            corr_dat[2,Ntr] = scriptK_tmp   
+                   
+        # Define d theta / dt (to be used for noise calculation)
+        dt_theta = dt_phik + dt_phip + dt_phiq # No need to make periodic
+        dt_theta = dt_theta * tmp # Normalizing based on grid
+        corr_dat[3,Ntr] = dt_theta
+
+    # Open file in append mode and write data
+    with open("triad_energy_phase.txt", "a") as f:
+        formatted_data = " ".join(f"{x:23.14E}" for x in np.hstack(([time], corr_dat.flatten())))
+        f.write(formatted_data + "\n")
+    
+    return
+
