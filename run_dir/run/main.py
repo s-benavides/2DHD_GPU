@@ -131,7 +131,7 @@ if stat==0:
 
     # Stream function IC (random phase up to kup)
     ps = np.zeros((n,n_half),dtype=complex)
-    cond = (ka2<=kmax)&(ka2>=tiny)
+    cond = (ka2<=kup**2)&(ka2>=tiny)
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
     ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
