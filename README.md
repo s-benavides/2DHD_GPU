@@ -15,5 +15,3 @@ Based on a 2D Fortran code written by Pablo Mininni (Universidad de Buenos Aires
 * Triad statistics
 * Phase-only implementation
 * Ensemble members
-
-Currently working on (in 'triads' branch): triad statistics.
