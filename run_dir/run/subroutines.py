@@ -504,13 +504,15 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY
 
     # Isolate individual triad rhos and phis
     rhos = np.abs(ps)
-    rhoks = np.diag(np.dot(np.dot(indKX,rhos),indKY))
-    rhops = np.diag(np.dot(np.dot(indPX,rhos),indPY))
-    rhoqs = np.diag(np.dot(np.dot(indQX,rhos),indQY))
-    phis = np.angle(ps)
-    phiks = np.diag(np.dot(np.dot(indKX,phis),indKY))
-    phips = np.diag(np.dot(np.dot(indPX,phis),indPY))
-    phiqs = np.diag(np.dot(np.dot(indQX,phis),indQY))
+    # Isolate individual triad rhos and phis
+    rhos = np.abs(ps_single)
+    rhoks = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indKX, rhos),indKY)
+    rhops = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indPX, rhos),indPY)
+    rhoqs = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indQX, rhos),indQY)
+    phis = np.angle(ps_single)
+    phiks = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indKX, phis),indKY)
+    phips = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indPX, phis),indPY)
+    phiqs = np.einsum('ik,ki->i',np.einsum('ij,jk->ik', indQX, phis),indQY)
     
     ####### thetauuu
     ## Define thetauuu
