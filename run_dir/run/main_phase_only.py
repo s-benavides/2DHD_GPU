@@ -153,7 +153,6 @@ else:
     timeth = 0
     timet = 0
     timec = 0
-    timecorr = 0
 
     # Load the saved output file
     R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy',allow_pickle=True)
