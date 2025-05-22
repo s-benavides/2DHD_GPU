@@ -45,8 +45,9 @@ ka_half = np.fft.rfftfreq(n,d=(1/n)) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
-I = 1j*np.ones((n,n_half),dtype=np.complex128)# If recording triad statistics, load relevant information
+I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
+# If recording triad statistics, load relevant information
 if triad_phase_hist:
     # Load triads for histogram
     triads = np.loadtxt(idir+'/triads.txt')
@@ -128,6 +129,7 @@ if stat==0:
     timet = tstep
     timec = cstep
     times = sstep
+    timeth = thstep
 
     # Stream function IC (random phase up to kup)
     ps = np.zeros((n,n_half),dtype=complex)
@@ -148,7 +150,7 @@ else:
     times = 0
     timet = 0
     timec = 0
-    timecorr = 0
+    timeth = 0
 
     # Load the saved output file
     R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy',allow_pickle=True)
@@ -269,6 +271,12 @@ while (time_wall.time() < sim_end)&(t<=step):
         R1 = np.fft.irfftn(-laplak2(ps,ka2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
         
+        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+        if triad_phase_hist:
+            np.save(odir+'/thetauuu.npy',thetauuu)
+            np.save(odir+'/scriptK.npy',scriptK)
+            np.save(odir+'/i_count.npy',i_count)
+        
         with open('./time_field.txt', 'a') as f:
             f.write(f"{int(stat):03} {time:14.6F}\n")
 
@@ -296,6 +304,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     timet += 1
     times += 1
     timec += 1
+    timeth += 1
     time += dt   
     
 ############## END OF MAIN LOOP ##############
@@ -311,6 +320,12 @@ np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 
 R1 = np.fft.irfftn(-laplak2(ps,ka2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
+
+# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+if triad_phase_hist:
+    np.save(odir+'/thetauuu.npy',thetauuu)
+    np.save(odir+'/scriptK.npy',scriptK)
+    np.save(odir+'/i_count.npy',i_count)
 
 with open('./time_field.txt', 'a') as f:
     f.write(f"{int(stat):03} {time:14.6F}\n")
