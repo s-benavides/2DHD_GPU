@@ -45,8 +45,9 @@ ka_half = np.fft.rfftfreq(n,d=(1/n)) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
-I = 1j*np.ones((n,n_half),dtype=np.complex128)# If recording triad statistics, load relevant information
+I = 1j*np.ones((n,n_half),dtype=np.complex128)
 
+# If recording triad statistics, load relevant information
 if triad_phase_hist:
     # Load triads for histogram
     triads = np.loadtxt(idir+'/triads.txt')
@@ -175,6 +176,7 @@ if triad_phase_hist:
 stat,t,time = np.loadtxt('./status.py') # stat is the output number
 stat = int(stat)
 t = int(t)
+ini = t
 
 if stat==0:
     dump = 0 # For use in spectra and transfers
