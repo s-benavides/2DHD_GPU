@@ -153,7 +153,7 @@ else:
     timeth = 0
 
     # Load the saved output file
-    R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy',allow_pickle=True)
+    R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy')
 
     # FFT to get ps
     ps = np.fft.rfftn(R1)
@@ -164,19 +164,19 @@ else:
         my_file = Path(odir+'/thetauuu.npy')
         if my_file.is_file():
             # Load
-            thetauuu[:] = np.load(my_file,allow_pickle=True)[:]
+            thetauuu[:] = np.load(my_file)[:]
 
         # Check to see if scriptK file exists:
         my_file = Path(odir+'/scriptK.npy')
         if my_file.is_file():
             # Load
-            scriptK[:] = np.load(my_file,allow_pickle=True)[:]
+            scriptK[:] = np.load(my_file)[:]
 
         # Also load the count file, if it exists:
         my_file = Path(odir+'/i_count.npy')
         if my_file.is_file():
             # Load
-            i_count = int(np.load(my_file,allow_pickle=True))
+            i_count = int(np.load(my_file))
             print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
 
 
