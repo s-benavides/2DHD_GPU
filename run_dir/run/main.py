@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [0] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [1] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -25,7 +25,7 @@ sys.stdout = log
 
 # Create a 'RUNNING.txt' file
 with open('./RUNNING.txt', 'w') as creating_new_txt_file:
-   pass
+    pass
 print("Empty RUNNING File Created Successfully",flush=True)
 
 # If the seed is fed through an argument, it supersedes the one provided by parameter.py
@@ -36,7 +36,7 @@ if num_args>1:
 
 # Initialize random number generator (using numpy because it's faster)
 rng = numpy.random.default_rng(seed)
-    
+
 # Builds the wave number and the square wave number matrixes
 # In spectral space, index 0 is the kx axis, index 1 is the ky axis
 # In real space, index 0 is the x axis, index 1 is the y axis
@@ -55,7 +55,7 @@ if triad_phase_hist:
     print("Gathering histogram statistics for %s triads." % Ntriads, flush = True)
 
     # Define histogram
-    thetauuu = np.zeros((Nbins,Ntriads))
+    thetauuu = np.zeros((Nbins,Ntriads),dtype=np.int32)
     # Define scriptK
     scriptK = np.zeros((2,Ntriads))
     # Set count to zero for scriptK average
@@ -115,48 +115,109 @@ if triad_phase_hist:
             sgn=-1.0
         indQX[Ntr,ka==qx] = sgn
         indQY[ka_half==qy,Ntr] = 1.0
+        
+    # To be used in corr_check (time-series of theta statistics)
+    indKX_ts = np.zeros((Ntriads_ts,n))
+    indKY_ts = np.zeros((n_half,Ntriads_ts))
+    indPX_ts = np.zeros((Ntriads_ts,n))
+    indPY_ts = np.zeros((n_half,Ntriads_ts))
+    indQX_ts = np.zeros((Ntriads_ts,n))
+    indQY_ts = np.zeros((n_half,Ntriads_ts))
+    kmag_ts = np.zeros((Ntriads_ts))
+    pmag_ts = np.zeros((Ntriads_ts))
+    qmag_ts = np.zeros((Ntriads_ts))
+    qxp_ts = np.zeros((Ntriads_ts))
+    for Ntr,triad in enumerate(triads_ts):
+        kx,ky,px,py = triad 
+        qx = -kx-px
+        qy = -ky-py
+        # Magnitudes
+        kmag_ts[Ntr] = np.sqrt(kx**2+ky**2)
+        pmag_ts[Ntr] = np.sqrt(px**2+py**2)
+        qmag_ts[Ntr] = np.sqrt(qx**2+qy**2)
+    
+        # k
+        if (ky>=0): # phi(kx,ky)
+            sgn=1.0
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1.0
+        indKX_ts[Ntr,ka==kx] = sgn
+        indKY_ts[ka_half==ky,Ntr] = 1.0
+    
+        # p
+        if (py>=0): # phi(px,py)
+            sgn=1.0
+        else: # -phi(-px,-py)
+            py=-py
+            px=-px
+            sgn=-1.0
+        indPX_ts[Ntr,ka==px] = sgn
+        indPY_ts[ka_half==py,Ntr] = 1.0
+        
+        # q
+        if (qy>=0): # phi(qx,qy)
+            sgn=1.0
+        else: # -phi(-qx,-qy)
+            qy=-qy
+            qx=-qx
+            sgn=-1.0
+        indQX_ts[Ntr,ka==qx] = sgn
+        indQY_ts[ka_half==qy,Ntr] = 1.0
+        
+        # qxp
+        qxp_ts[Ntr] = qx*py-px*qy
 
 ##########################
 ### INITIAL CONDITIONS ###
 ##########################
 # Read status.py
-stat,time = np.loadtxt('./status.py') # stat is the output number
+stat,t,time = np.loadtxt('./status.py') # stat is the output number
 stat = int(stat)
+t = int(t)
+ini = t
 
 if stat==0:
     dump = 0 # For use in spectra and transfers
-    ini = 1 # Initial time-step
+    t = 1 # Initial time-step
     timet = tstep
     timec = cstep
     times = sstep
     timeth = thstep
+    timethts = thtsstep
 
     # Stream function IC (random phase up to kup)
-    ps = np.zeros((n,n_half),dtype=complex)
-    cond = (ka2<=kup**2)&(ka2>=tiny)
+    ps = np.zeros((Nens,n,n_half),dtype=np.complex128)
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
     phase = np.asarray(phase)
-    ps[cond] = (np.sqrt(ka2[cond])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
+    cond = (ka2<=kup**2)&(ka2>=tiny)
+    ps = (np.sqrt(ka2[None,:,:])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
     # Ensure 'realness' in the ky = 0 axis:
-    ps[n_half:,0] = np.flip(np.conj(ps[1:n_half-1,0]))
-    ps[0,0] = ps[n_half-1,0] = 0.0
-    
+    ps[:,n_half:,0] = np.flip(np.conj(ps[:,1:n_half-1,0]),axis=1)
+    ps[:,0,0] = ps[:,n_half-1,0] = 0.0
+
     # Renormalize
     E = energy(ps,1,ka2)
-    ps *= np.sqrt(2.0*u0/E)
+    ps *= np.sqrt(2.0*u0/E[:,None,None])
 else:
-    ini = int((stat-1)*tstep)
-    dump = float(ini)/float(sstep)+1
-    times = 0
-    timet = 0
-    timec = 0
-    timeth = 0
+    dump = int(float(t)/float(sstep))
+    times = t%sstep
+    timet = t%tstep
+    timec = t%cstep
+    timeth = t%thstep
+    timethts = t%thtsstep
 
     # Load the saved output file
     R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy')
 
     # FFT to get ps
-    ps = np.fft.rfftn(R1)
+    ps = np.fft.rfftn(R1,axes=(1,2))
+    
+    Nens_t,_,_ = ps.shape
+    if Nens_t!=Nens:
+        print('Nens in parameter.py does NOT match Nens from the input file. Changing Nens to match the input file. Nens = %i --> Nens = %i' % (Nens,Nens_t), flush=True)
+        Nens = Nens_t
 
     # If traid_phase_hist, then load the histogram array
     if triad_phase_hist:
@@ -180,7 +241,7 @@ else:
             print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
 
 
-print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
+print('Starting from time-step %s and time %.3f.' % (t,time), flush=True)
 
 ###############
 ### FORCING ###
@@ -188,40 +249,30 @@ print('Starting from time-step %s and time %.3f.' % (ini,time), flush=True)
 dt = CFL_condition(ps,KX,KY,I)
 if iflow==1:
     # Stream function forcing (kdn to kup)
-    fp = np.zeros((n,n_half),dtype=complex)
+    fp = np.zeros((Nens,n,n_half),dtype=np.complex128)
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
-    if num_args>1:
-        # If we're doing an ensemble run, where we change the seed by
-        # feeding arguments to the execution, then we add a random
-        # phase at the beginning of each run.
-        phase = rng.uniform(low=-np.pi,high=np.pi,size=fp.shape)
-    else:
-        # Otherwise, go with a random phase which is the same for every run.
-        rng2 = np.random.default_rng(1)
-        phase = rng2.uniform(low=-np.pi,high=np.pi,size=fp.shape)
+    phase = rng.uniform(low=-np.pi,high=np.pi,size=fp.shape)
     phase = np.asarray(phase)
-    fp[cond] = (np.cos(phase[cond]) + 1j*np.sin(phase[cond]))
+    fp = (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
     # Ensure 'realness' in the ky = 0 axis:
-    fp[n_half:,0] = np.flip(np.conj(fp[1:n_half-1,0]))
-    fp[0,0] = fp[n_half-1,0] = 0.0
+    fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
+    fp[:,0,0] = fp[:,n_half-1,0] = 0.0
     
     # Renormalize
     E = energy(fp,1,ka2)
-    fp *= fp0/np.sqrt(E)
-    
+    fp *= fp0/np.sqrt(E[:,None,None])
 elif iflow==2:
     fp = const_inj(ps,ka2,rng)
 elif iflow==3:
     fp = rand_force(dt,ka2,ka,ka_half,rng)
 else:
     sys.exit('ERROR. The variable iflow must be either 1, 2, or 3. Stopping simulation.')
-
+    
 #################
 ### MAIN LOOP ###
 #################
 start_time=time_wall.time()
 sim_end = start_time + 60*60*H # run for H hours
-t = ini
 while (time_wall.time() < sim_end)&(t<=step):
     if (t%cfl_cad)==0: # Update dt every cfl_cad time steps.
         dt = CFL_condition(ps,KX,KY,I)
@@ -231,14 +282,11 @@ while (time_wall.time() < sim_end)&(t<=step):
     if timec==cstep:
         timec = 0
         cond_check(ps,fp,time,ka2)
-        if triad_phase_hist:
-            # Output time series of triad energy and p hase for various triads.
-            corr_check(ps,time,ka2,ka,ka_half,KX,KY,I,triads_ts)
 
     # Every 1000 steps, check if RUNNING.txt is present, otherwise end the stepping and save last outputs.
     if (t%1000)==0:
         if not os.path.isfile('./RUNNING.txt'):
-            print("RUNNING.txt has been deleted. Stopping run. tstep = %s time = %s" % (t,time),flush=True)
+            print("RUNNING.txt has been deleted. Stopping run. tstep = %s, time = %s" % (t,time),flush=True)
             break
 
     # Random force
@@ -248,7 +296,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     # Every 'sstep' steps, generates external files with the power spectrum
     if times==sstep:
         times = 0
-        dump += 1 # Update specturm count
+        dump += 1 # Update spectrum count
         spectrum(ps,dump,ka2)
         transfers(ps,dump,ka2,KX,KY,I)
         with open('./time_spec.txt', 'a') as f:
@@ -258,17 +306,23 @@ while (time_wall.time() < sim_end)&(t<=step):
     if ((timeth==thstep)&(triad_phase_hist)): 
         timeth = 0
         # Updates thetauuu
-        i_count,thetauuu,scriptK = thetauuu_calc(ps,i_count,thetauuu,scriptK,ka,ka_half,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
+        i_count,thetauuu,scriptK = thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
+        
+        
+    if ((timethts==thtsstep)&(triad_phase_hist)):
+        timethts = 0
+        # Output time series of triad energy and phase for various triads.
+        corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts)
         
     # Every 'tstep' steps, stores the results of the integration
     if timet==tstep:
         timet = 0
         stat += 1
         # Write current state to file:
-        R1 = np.fft.irfftn(ps)
+        R1 = np.fft.irfftn(ps,axes=(1,2))
         np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
         
-        R1 = np.fft.irfftn(-laplak2(ps,ka2))
+        R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
         
         # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
@@ -278,7 +332,7 @@ while (time_wall.time() < sim_end)&(t<=step):
             np.save(odir+'/i_count.npy',i_count)
         
         with open('./time_field.txt', 'a') as f:
-            f.write(f"{int(stat):03} {time:14.6F}\n")
+            f.write(f"{int(stat):03} {int(t)} {time:14.6F}\n")
 
     ######## Runge-Kutta step 1
     C3 = np.copy(ps)
@@ -290,11 +344,11 @@ while (time_wall.time() < sim_end)&(t<=step):
             fp = const_inj(C3,ka2,rng)
             
         # Nonlinear term
-        nl = laplak2(C3,ka2) # Makes -w_2D
+        nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D
         nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
         tmp1 = dt/float(o)
-        C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2,kmax)
+        C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2[None,:,:],kmax)
         
     ######## Runge-Kutta step 3
     ps = np.copy(C3)
@@ -305,6 +359,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     times += 1
     timec += 1
     timeth += 1
+    timethts += 1
     time += dt   
     
 ############## END OF MAIN LOOP ##############
@@ -315,10 +370,10 @@ print('Finished time-stepping loop. Total wall time: %.4f, iterations per second
 stat += 1
 print("Saving files last time... Stat = %s, iteration = %s, time = %.4e" % (stat,t,time), flush=True)
 # Write current state to file:
-R1 = np.fft.irfftn(ps)
+R1 = np.fft.irfftn(ps,axes=(1,2))
 np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 
-R1 = np.fft.irfftn(-laplak2(ps,ka2))
+R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
 
 # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
@@ -328,7 +383,7 @@ if triad_phase_hist:
     np.save(odir+'/i_count.npy',i_count)
 
 with open('./time_field.txt', 'a') as f:
-    f.write(f"{int(stat):03} {time:14.6F}\n")
+    f.write(f"{int(stat):03} {int(t)} {time:14.6F}\n")
 
 # Delete RUNNING.txt if it hasn't already been deleted.
 if os.path.isfile('./RUNNING.txt'):
