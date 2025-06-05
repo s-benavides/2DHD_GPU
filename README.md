@@ -8,10 +8,7 @@ Pseudo-spectral solver for the two-dimensional Navier Stokes equations. Written 
 
 Based on a 2D Fortran code written by Pablo Mininni (Universidad de Buenos Aires).
 
-### Work in progress!
-
-
-### To do: 
+### Capabilities: 
 * Triad statistics
 * Phase-only implementation
 * Ensemble members
