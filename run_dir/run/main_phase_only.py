@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [0] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [3] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -40,43 +40,43 @@ rng = numpy.random.default_rng(seed)
 # Builds the wave number and the square wave number matrixes
 # In spectral space, index 0 is the kx axis, index 1 is the ky axis
 # In real space, index 0 is the x axis, index 1 is the y axis
-ka = np.fft.fftfreq(n,d=(1/n)) # kx
-ka_half = np.fft.rfftfreq(n,d=(1/n)) # ky
+ka = np.asarray(np.fft.fftfreq(n,d=(1/n)),dtype=Tf) # kx
+ka_half = np.asarray(np.fft.rfftfreq(n,d=(1/n)),dtype=Tf) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
-I = 1j*np.ones((n,n_half),dtype=np.complex128)
+I = 1j*np.ones((n,n_half),dtype=Tc)
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
     # Load triads for histogram
-    triads = np.loadtxt(idir+'/triads.txt')
+    triads = np.loadtxt(idir+'/triads.txt',dtype=Ti)
     Ntriads = triads.shape[0]
     print("Gathering histogram statistics for %s triads." % Ntriads, flush = True)
 
     # Define histogram
-    thetauuu = np.zeros((Nbins,Ntriads),dtype=np.int32)
+    thetauuu = np.zeros((Nbins,Ntriads),dtype=Ti)
     # Define scriptK
-    scriptK = np.zeros((2,Ntriads))
+    scriptK = np.zeros((2,Ntriads),dtype=Tf)
     # Set count to zero for scriptK average
     i_count = 0
 
     # Now process time-series triads
-    triads_ts = np.loadtxt(idir+'/triads_ts.txt')
+    triads_ts = np.loadtxt(idir+'/triads_ts.txt',dtype=Ti)
     Ntriads_ts = triads_ts.shape[0]
     print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
     
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
-    indKX = np.zeros((Ntriads,n))
-    indKY = np.zeros((n_half,Ntriads))
-    indPX = np.zeros((Ntriads,n))
-    indPY = np.zeros((n_half,Ntriads))
-    indQX = np.zeros((Ntriads,n))
-    indQY = np.zeros((n_half,Ntriads))
-    kmag = np.zeros((Ntriads))
-    pmag = np.zeros((Ntriads))
-    qmag = np.zeros((Ntriads))
+    indKX = np.zeros((Ntriads,n),dtype=Ti)
+    indKY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indPX = np.zeros((Ntriads,n),dtype=Ti)
+    indPY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indQX = np.zeros((Ntriads,n),dtype=Ti)
+    indQY = np.zeros((n_half,Ntriads),dtype=Ti)
+    kmag = np.zeros((Ntriads),dtype=Tf)
+    pmag = np.zeros((Ntriads),dtype=Tf)
+    qmag = np.zeros((Ntriads),dtype=Tf)
     for Ntr,triad in enumerate(triads):
         kx,ky,px,py = triad 
         qx = -kx-px
@@ -88,45 +88,45 @@ if triad_phase_hist:
     
         # k
         if (ky>=0): # phi(kx,ky)
-            sgn=1.0
+            sgn=1
         else: # -phi(-kx,-ky)
             ky=-ky
             kx=-kx
-            sgn=-1.0
+            sgn=-1
         indKX[Ntr,ka==kx] = sgn
-        indKY[ka_half==ky,Ntr] = 1.0
+        indKY[ka_half==ky,Ntr] = 1
     
         # p
         if (py>=0): # phi(px,py)
-            sgn=1.0
+            sgn=1
         else: # -phi(-px,-py)
             py=-py
             px=-px
-            sgn=-1.0
+            sgn=-1
         indPX[Ntr,ka==px] = sgn
-        indPY[ka_half==py,Ntr] = 1.0
+        indPY[ka_half==py,Ntr] = 1
         
         # q
         if (qy>=0): # phi(qx,qy)
-            sgn=1.0
+            sgn=1
         else: # -phi(-qx,-qy)
             qy=-qy
             qx=-qx
-            sgn=-1.0
+            sgn=-1
         indQX[Ntr,ka==qx] = sgn
-        indQY[ka_half==qy,Ntr] = 1.0
+        indQY[ka_half==qy,Ntr] = 1
         
     # To be used in corr_check (time-series of theta statistics)
-    indKX_ts = np.zeros((Ntriads_ts,n))
-    indKY_ts = np.zeros((n_half,Ntriads_ts))
-    indPX_ts = np.zeros((Ntriads_ts,n))
-    indPY_ts = np.zeros((n_half,Ntriads_ts))
-    indQX_ts = np.zeros((Ntriads_ts,n))
-    indQY_ts = np.zeros((n_half,Ntriads_ts))
-    kmag_ts = np.zeros((Ntriads_ts))
-    pmag_ts = np.zeros((Ntriads_ts))
-    qmag_ts = np.zeros((Ntriads_ts))
-    qxp_ts = np.zeros((Ntriads_ts))
+    indKX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    indPX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    indQX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    kmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    pmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    qmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    qxp_ts = np.zeros((Ntriads_ts),dtype=Ti)
     for Ntr,triad in enumerate(triads_ts):
         kx,ky,px,py = triad 
         qx = -kx-px
@@ -138,33 +138,33 @@ if triad_phase_hist:
     
         # k
         if (ky>=0): # phi(kx,ky)
-            sgn=1.0
+            sgn=1
         else: # -phi(-kx,-ky)
             ky=-ky
             kx=-kx
-            sgn=-1.0
+            sgn=-1
         indKX_ts[Ntr,ka==kx] = sgn
-        indKY_ts[ka_half==ky,Ntr] = 1.0
+        indKY_ts[ka_half==ky,Ntr] = 1
     
         # p
         if (py>=0): # phi(px,py)
-            sgn=1.0
+            sgn=1
         else: # -phi(-px,-py)
             py=-py
             px=-px
-            sgn=-1.0
+            sgn=-1
         indPX_ts[Ntr,ka==px] = sgn
-        indPY_ts[ka_half==py,Ntr] = 1.0
+        indPY_ts[ka_half==py,Ntr] = 1
         
         # q
         if (qy>=0): # phi(qx,qy)
-            sgn=1.0
+            sgn=1
         else: # -phi(-qx,-qy)
             qy=-qy
             qx=-qx
-            sgn=-1.0
+            sgn=-1
         indQX_ts[Ntr,ka==qx] = sgn
-        indQY_ts[ka_half==qy,Ntr] = 1.0
+        indQY_ts[ka_half==qy,Ntr] = 1
         
         # qxp
         qxp_ts[Ntr] = qx*py-px*qy
@@ -188,9 +188,9 @@ if stat==0:
     timethts = thtsstep
 
     # Stream function IC (random phase up to kup)
-    ps = np.zeros((Nens,n,n_half),dtype=np.complex128)
+    ps = np.zeros((Nens,n,n_half),dtype=Tc)
     phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
-    phase = np.asarray(phase)
+    phase = np.asarray(phase,dtype=Tf)
     cond = (ka2<=kup**2)&(ka2>=tiny)
     ps = (np.sqrt(ka2[None,:,:])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
     cond = (ka2>kup**2)&(ka2<=kmax)
@@ -259,7 +259,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     # See the cond_check subroutine for details.
     if timec==cstep:
         timec = 0
-        cond_check(ps,fp,time,ka2)
+        cond_check(ps,None,time,ka2)
 
     # Every 1000 steps, check if RUNNING.txt is present, otherwise end the stepping and save last outputs.
     if (t%1000)==0:

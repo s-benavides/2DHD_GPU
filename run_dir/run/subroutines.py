@@ -7,6 +7,12 @@ import warnings
 ######################
 ### Custom Kernels ###
 ######################
+# Numerical precision:
+if Tf == np.float32:
+    float_name='float'
+elif Tf==np.float64:
+    float_name='double'
+
 # """
 # Two-dimensional derivative of the matrix 'a'
 
@@ -20,8 +26,8 @@ import warnings
 #  b : the resulting matrix.
 # """
 derivk2 = np.ElementwiseKernel(
-   'float64 K, complex128 a,complex128 I',
-   'complex128 b',
+   ''+Tf.__name__+' K, '+Tc.__name__+' a,'+Tc.__name__+' I',
+   ''+Tc.__name__+' b',
    'b = I*K*a',
    'derivk2')
 
@@ -36,8 +42,8 @@ derivk2 = np.ElementwiseKernel(
 #  b : at the output contains the Laplacian d2a/dka2
 # """
 laplak2 = np.ElementwiseKernel(
-   'complex128 a,float64 ka2',
-   'complex128 b',
+   ''+Tc.__name__+' a,'+Tf.__name__+' ka2',
+   ''+Tc.__name__+' b',
    'b = -ka2*a',
    'laplak2')
 
@@ -45,8 +51,8 @@ laplak2 = np.ElementwiseKernel(
 # Multiplies and subtracts four matrices (for poission). Generic type so that it can be used with real or complex arrays.
 # """
 quad_diff = np.ElementwiseKernel(
-   'T a,T b,T c,T d',
-   'T e',
+   ''+Tf.__name__+' a,'+Tf.__name__+' b,'+Tf.__name__+' c,'+Tf.__name__+' d',
+   ''+Tf.__name__+' e',
    'e = a*b-c*d',
    'quad_diff')
 
@@ -54,8 +60,8 @@ quad_diff = np.ElementwiseKernel(
 # Multiplies and adds four matrices (for poission). Generic type so that it can be used with real or complex arrays.
 # """
 quad_plus = np.ElementwiseKernel(
-   'T a,T b,T c,T d',
-   'T e',
+   ''+Tf.__name__+' a,'+Tf.__name__+' b,'+Tf.__name__+' c,'+Tf.__name__+' d',
+   ''+Tf.__name__+' e',
    'e = a*b+c*d',
    'quad_plus')
 
@@ -63,8 +69,8 @@ quad_plus = np.ElementwiseKernel(
 # Dealiasing
 # """
 dealias = np.ElementwiseKernel(
-    'complex128 a, float64 ka2, float64 kmax',
-    'complex128 b',
+    ''+Tc.__name__+' a, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax',
+    ''+Tc.__name__+' b',
 '''
     if (ka2>kmax){
        b = 0;
@@ -78,8 +84,8 @@ dealias = np.ElementwiseKernel(
 # Filter
 # """
 kfilt = np.ElementwiseKernel(
-    'complex128 a, float64 ka2, float64 kmin, float64 kmax',
-    'complex128 b',
+    ''+Tc.__name__+' a, '+Tf.__name__+' ka2, '+Tf.__name__+' kmin, '+Tf.__name__+' kmax',
+    ''+Tc.__name__+' b',
 '''
     if (ka2 > kmax || ka2 < kmin) {
        b = 0;
@@ -93,20 +99,20 @@ kfilt = np.ElementwiseKernel(
 # Nonlinear term
 # """
 NL = np.ElementwiseKernel(
-   'complex128 ps,complex128 nl,complex128 fp, float64 tmp1, float64 nu, float64 hnu, float64 nn, float64 mm, float64 ka2, float64 kmax',
-   'complex128 out',
-   """
-    if (ka2 > kmax || ka2 == 0) {
+   ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tc.__name__+' fp, '+Tf.__name__+' tmp1, '+Tf.__name__+' nu, '+Tf.__name__+' hnu, '+Ti.__name__+' nn, '+Ti.__name__+' mm, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax',
+   ''+Tc.__name__+' out',
+   f"""
+    if (ka2 > kmax || ka2 == 0) {{
        out = 0;
-    } else {
-       out = (ps + ((-nl)/ka2+fp)*tmp1)/(1.0 +(nu*pow(ka2, nn) + hnu*pow(ka2, -mm))*tmp1);
-    }
+    }} else {{
+       out = (ps + ((-nl)/ka2+fp)*tmp1)/({float_name}(1.0) +(nu*pow({float_name}(ka2), {float_name}(nn)) + hnu*pow({float_name}(ka2), -{float_name}(mm)))*tmp1);
+    }}
    """,
    'NL')
 
 NL_phase_only = np.ElementwiseKernel(
-   'complex128 ps, complex128 in, complex128 nl, float64 tmp1, float64 ka2, float64 kmax, complex128 I',
-   'complex128 out',
+   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' tmp1, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
+   ''+Tc.__name__+' out',
    """
     if (ka2 > kmax || ka2 == 0 || abs(in) == 0 ) {
        out = 0;
@@ -120,8 +126,8 @@ NL_phase_only = np.ElementwiseKernel(
 # Used in corr_check
 # """
 dphi_dt = np.ElementwiseKernel(
-   'complex128 ps,complex128 nl,float64 ka2, float64 kmax, complex128 I',
-   'float64 out',
+   ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
+   ''+Tf.__name__+' out',
    """
     if (ka2 > kmax || ka2 == 0 || abs(ps) == 0 ) {
        out = 0;
@@ -135,14 +141,14 @@ dphi_dt = np.ElementwiseKernel(
 # scriptK calculations
 # """
 scriptK_calc = np.ElementwiseKernel(
-   'float64 kmag, float64 pmag, float64 qmag,float64 rhoks, float64 rhops, float64 rhoqs',
-   'float64 out',
-    """
-    if (abs(rhoqs*rhops*rhoks) > 0) {
-       out = ((pow(qmag,2.0)-pow(pmag,2.0))/(pow(kmag,2.0)))*abs((rhoqs*rhops)/(rhoks)) + ((pow(pmag,2.0)-pow(kmag,2.0))/(pow(qmag,2.0)))*abs((rhoks*rhops)/(rhoqs)) + ((pow(kmag,2.0)-pow(qmag,2.0))/(pow(pmag,2.0)))*abs((rhoks*rhoqs)/(rhops));
-    } else {
+   ''+Tf.__name__+' kmag, '+Tf.__name__+' pmag, '+Tf.__name__+' qmag,'+Tf.__name__+' rhoks, '+Tf.__name__+' rhops, '+Tf.__name__+' rhoqs',
+   ''+Tf.__name__+' out',
+    f"""
+    if (abs(rhoqs*rhops*rhoks) > 0) {{
+       out = ((pow(qmag,{float_name}(2.0))-pow(pmag,{float_name}(2.0)))/(pow(kmag,{float_name}(2.0))))*abs((rhoqs*rhops)/(rhoks)) + ((pow(pmag,{float_name}(2.0))-pow(kmag,{float_name}(2.0)))/(pow(qmag,{float_name}(2.0))))*abs((rhoks*rhops)/(rhoqs)) + ((pow(kmag,{float_name}(2.0))-pow(qmag,{float_name}(2.0)))/(pow(pmag,{float_name}(2.0))))*abs((rhoks*rhoqs)/(rhops));
+    }} else {{
         out = 0.0;
-    }
+    }}
     """,
    'scriptK_calc')
 
@@ -164,7 +170,7 @@ def energy(C,kin,ka2):
     RETURNS
     E  : at the output contains the energy
     """
-    two = np.ones((n_half))
+    two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
 
     # We suppress warnings here because, if kin<0, the [0,0] element will be nan, since ka2 = 0.
@@ -185,7 +191,7 @@ def inerprod(a,b,kin,ka2):
     RETURNS
      rslt : the inner product of the two matrices
     """ 
-    two = np.ones((n_half))
+    two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
 
     # We suppress warnings here because, if kin<0, the [0,0] element will be nan, since ka2 = 0.
@@ -243,9 +249,9 @@ def CFL_condition(ps,KX,KY,I):
     # Compute x and y derivatives
     vx = derivk2(KX[None,:,:],ps,I[None,:,:])
     vy = derivk2(KY[None,:,:],ps,I[None,:,:])
+    # IFFT
     vx = np.fft.irfftn(vx,axes=(1,2))
     vy = np.fft.irfftn(vy,axes=(1,2))
-    # IFFT
     vel2_R = quad_plus(vx,vx,vy,vy)
 
     # Calculate max velocity magnitude among all ensembles
@@ -268,7 +274,7 @@ def const_inj(ps,ka2,rng):
     RETURNS
      fp : forcing function
     """
-    fp = np.zeros(ps.shape,dtype=complex)
+    fp = np.zeros(ps.shape,dtype=Tc)
     cond = (ka2<=kup**2)&(ka2>=kdn**2)
     # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
     fp[:,cond]=ps[:,cond]/(np.abs(ps[:,cond])+1.0)
@@ -280,7 +286,7 @@ def const_inj(ps,ka2,rng):
     E = inerprod(ps,fp,1,ka2)
     # Random number
     tmp = rng.uniform(low=-1,high=1,size=ps.shape)
-    tmp = np.asarray(tmp)*np.sqrt(ka2[None,:,:])
+    tmp = np.asarray(tmp,dtype=Tf)*np.sqrt(ka2[None,:,:])
 
     fp *= fp0/E[:,None,None]
     fp[:,cond] += 1j*(tmp*ps)[:,cond]
@@ -312,21 +318,21 @@ def rand_force(dt,ka2,ka,ka_half,rng):
     # Complex phase of mode. Between -pi and pi.
     phase = rng.uniform(low=-numpy.pi,high=numpy.pi,size=Nens)
     # kx
-    kx = numpy.floor(kup*numpy.cos(theta)).astype(numpy.int32)
+    kx = numpy.floor(kup*numpy.cos(theta)).astype(numpy.int16)
     # ky 
-    ky = numpy.floor(kup*numpy.sin(theta)).astype(numpy.int32)
+    ky = numpy.floor(kup*numpy.sin(theta)).astype(numpy.int16)
 
     # Define norm
     norm = numpy.power(n,2)*numpy.sqrt(fp0/dt)
 
     # Transfer to device
-    phase = np.asarray(phase)
-    kx = np.asarray(kx)
-    ky = np.asarray(ky)
+    phase = np.asarray(phase,dtype=Tf)
+    kx = np.asarray(kx,dtype=Ti)
+    ky = np.asarray(ky,dtype=Ti)
 
     # Build fp
-    fp = np.zeros((Nens,n,n_half),dtype=np.complex128)
-    indx=np.zeros(Nens,dtype=np.int32)
+    fp = np.zeros((Nens,n,n_half),dtype=Tc)
+    indx=np.zeros(Nens,dtype=Ti)
     indx[kx>=0] = kx[kx>=0]
     indx[kx<0] = n+kx[kx<0]
     fp[np.arange(Nens),indx,ky] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[None,indx,ky])
@@ -356,7 +362,7 @@ def cond_check(ps,fp,time,ka2):
     # Energy budget
     en = energy(ps,1,ka2) # |u|^2
     if fp is None:
-        inj = np.nan
+        inj = inerprod(ps,0.0*ps,1,ka2) # energy injection
     else:
         inj = inerprod(ps,fp,1,ka2) # energy injection
     diss = nu*energy(ps,nn+1,ka2) # dissipation
@@ -365,7 +371,7 @@ def cond_check(ps,fp,time,ka2):
     # Enstrophy budget
     enst = energy(ps,2,ka2) # |omega|^2
     if fp is None:
-        inj_enst = np.nan
+        inj_enst = inerprod(ps,0.0*ps,2,ka2) # enstrophy injection
     else:
         inj_enst = inerprod(ps,fp,2,ka2) # enstrophy injection
     diss_enst = nu*energy(ps,nn+2,ka2) # enstrophy dissipation
@@ -399,7 +405,7 @@ def spectrum(ps,dump,ka2):
     """
     # Keaton Burn's version (using histogram for shell-averaging)
     
-    two = np.ones((n_half))
+    two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
     tmp = 1/n**4
     # Energy density
@@ -440,7 +446,7 @@ def transfers(ps,dump,ka2,KX,KY,I):
      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
     """
     
-    two = np.ones((n_half))
+    two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
     tmp = 1/n**4
 
@@ -579,7 +585,7 @@ def corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,
     Ntriads_ts = indKX_ts.shape[0]
 
     # Define the time series variable
-    corr_dat = np.zeros((4,Nens,Ntriads_ts))
+    corr_dat = np.zeros((4,Nens,Ntriads_ts),dtype=Tf)
 
     # Normalization
     tmp = 1/n**2
