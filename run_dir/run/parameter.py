@@ -22,7 +22,7 @@ Nens = 10  # Number of ensemble members
 n = 256    # Resolution
 n_half = n//2+1
 kcut = Tf(n/3.0) # float
-ord = 2    # Runge-Kutta order
+ord = 4    # Runge-Kutta order
 kmax = Tf((kcut)**2)  #     kmax: maximum truncation for dealiasing
 tiny =  Tf(0.000001)   #     tiny: minimum truncation for dealiasing
 
