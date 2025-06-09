@@ -212,6 +212,7 @@ else:
 
     # Load the saved output file
     R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy')
+    R1 = np.asarray(R1,dtype=Tf)
 
     # FFT to get ps
     ps = np.fft.rfftn(R1,axes=(1,2))
