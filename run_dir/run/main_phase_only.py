@@ -194,7 +194,7 @@ if stat==0:
     cond = (ka2<=kup**2)&(ka2>=tiny)
     ps = (np.sqrt(ka2[None,:,:])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
     cond = (ka2>kup**2)&(ka2<=kmax)
-    ps = (np.sqrt(ka2[None,:,:])/kup)**((-beta-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
+    ps += (np.sqrt(ka2[None,:,:])/kup)**((-beta-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
     # Ensure 'realness' in the ky = 0 axis:
     ps[:,n_half:,0] = np.flip(np.conj(ps[:,1:n_half-1,0]),axis=1)
     ps[:,0,0] = ps[:,n_half-1,0] = 0.0

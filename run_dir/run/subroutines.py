@@ -430,6 +430,7 @@ def spectrum(ps,dump,ka2):
         
     return
 
+
 def transfers(ps,dump,ka2,KX,KY,I):
     """
     Computes the one-dimensional energy transfer and flux (averaged over shells).
@@ -455,27 +456,26 @@ def transfers(ps,dump,ka2,KX,KY,I):
     nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
 
     ### Enstrophy flux
-    enst_tran_tmp = two[None,None,:]*ka2[None,:,:]*np.real(ps*np.conj(nl))*tmp 
-    enst_tran = np.zeros((Nens,n_half))  
+    enst_tran_tmp = np.pi*np.sqrt(ka2[None,:,:])*two[None,None,:]*ka2[None,:,:]*np.real(ps*np.conj(nl))*tmp 
 
     ### Energy flux
-    en_tran_tmp = two[None,None,:]*np.real(ps*np.conj(nl))*tmp
-    en_tran = np.zeros((Nens,n_half))
+    en_tran_tmp = np.pi*np.sqrt(ka2[None,:,:])*two[None,None,:]*np.real(ps*np.conj(nl))*tmp
 
-    # Shell averaging
-    for ii in range(n_half):
-        kk = ii+1
-        cond = (np.round(np.sqrt(ka2)).astype(np.int64)==kk)
-        enst_tran[:,ii] = np.sum(enst_tran_tmp*cond[None,:,:],axis=(1,2))
-        en_tran[:,ii] = np.sum(en_tran_tmp*cond[None,:,:],axis=(1,2))
+    # Average over ensembles
+    enst_tran_tmp = np.mean(enst_tran_tmp,axis=0)
+    en_tran_tmp = np.mean(en_tran_tmp,axis=0)
 
-    # Count zero as first bin
-    cond = (np.round(np.sqrt(ka2)).astype(np.int64)==0)
-    enst_tran[:,0] += np.sum(enst_tran_tmp*cond[None,:,:],axis=(1,2))
-    en_tran[:,0] += np.sum(en_tran_tmp*cond[None,:,:],axis=(1,2))
-    # Ensemble average
-    enst_tran = np.mean(enst_tran,axis=0)
-    en_tran = np.mean(en_tran,axis=0)
+    # Shell average of sqrt(ka2)
+    bins = np.concatenate((np.array([0.0]),np.arange(1.5, n_half+1.5, 1)))
+    hist_samples, _ = np.histogram(np.sqrt(ka2),bins=bins)
+    
+    # Shell average of E*sqrt(ka2) 
+    pow_samples_enst, _ = np.histogram(np.sqrt(ka2), bins=bins, weights=enst_tran_tmp)
+    pow_samples_en, _ = np.histogram(np.sqrt(ka2), bins=bins, weights=en_tran_tmp)
+    
+    # T(k) = int |k| T  dtheta / int |k| dtheta
+    enst_tran = pow_samples_enst / hist_samples
+    en_tran = pow_samples_en / hist_samples
     
     # Writes to file
     with open(odir+'/transfer.'+f'{int(dump):04}'+'.txt', 'w') as f:
