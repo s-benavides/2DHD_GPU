@@ -430,7 +430,7 @@ def spectrum(ps,dump,ka2):
         
     return
 
-def transfers(ps,dump,ka2,KX,KY,I):
+def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
     """
     Computes the one-dimensional energy transfer and flux (averaged over shells).
     
@@ -445,14 +445,13 @@ def transfers(ps,dump,ka2,KX,KY,I):
     RETURNS
      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
     """
-    
-    two = np.ones((n_half),dtype=Tf)
+    two = np.ones((n_half))
     two[1:] *= 2
     tmp = 1/n**4
 
     # Nonlinear term
-    nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
-    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+    nl = laplak2_cpu(ps,ka2[None,:,:]) # Makes -w_2D
+    nl = poisson_cpu(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
 
     ### Enstrophy flux
     enst_tran_tmp = two[None,None,:]*ka2[None,:,:]*np.real(ps*np.conj(nl))*tmp 
@@ -464,18 +463,21 @@ def transfers(ps,dump,ka2,KX,KY,I):
 
     # Shell averaging
     for ii in range(n_half):
-        kk = ii+1
-        cond = (np.round(np.sqrt(ka2)).astype(np.int64)==kk)
-        enst_tran[:,ii] = np.sum(enst_tran_tmp*cond[None,:,:],axis=(1,2))
-        en_tran[:,ii] = np.sum(en_tran_tmp*cond[None,:,:],axis=(1,2))
+        rows, cols = inds_polar[ii]
+        enst_tran[:,ii] = enst_tran_tmp[:,rows,cols].sum(axis=1)
+        en_tran[:,ii] = en_tran_tmp[:,rows,cols].sum(axis=1)
 
     # Count zero as first bin
-    cond = (np.round(np.sqrt(ka2)).astype(np.int64)==0)
+    cond = (np.round(np.sqrt(ka2)).astype(Ti)==0)
     enst_tran[:,0] += np.sum(enst_tran_tmp*cond[None,:,:],axis=(1,2))
     en_tran[:,0] += np.sum(en_tran_tmp*cond[None,:,:],axis=(1,2))
     # Ensemble average
     enst_tran = np.mean(enst_tran,axis=0)
     en_tran = np.mean(en_tran,axis=0)
+        
+    # Fluxes:
+    pi_enst = np.cumsum(enst_tran)
+    pi_en = np.cumsum(en_tran)
     
     # Writes to file
     with open(odir+'/transfer.'+f'{int(dump):04}'+'.txt', 'w') as f:
