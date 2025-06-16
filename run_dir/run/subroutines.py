@@ -122,6 +122,18 @@ NL_phase_only = np.ElementwiseKernel(
    """,
    'NL_phase_only')
 
+NL_CE = np.ElementwiseKernel(
+   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' T, '+Tf.__name__+' tmp1, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tf.__name__+' u0, '+Tf.__name__+' alpha',
+   ''+Tc.__name__+' out',
+   f"""
+    if (ka2 > kmax || ka2 == 0) {{
+       out = 0;
+    }} else {{
+       out = (ps + ((-nl)/ka2 -in*T/(2*u0*pow({float_name}(ka2), {float_name}(-alpha/2.0))))*tmp1);
+    }}
+   """,
+   'NL_CE')
+
 # """
 # Used in corr_check
 # """
@@ -450,8 +462,8 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
     tmp = 1/n**4
 
     # Nonlinear term
-    nl = laplak2_cpu(ps,ka2[None,:,:]) # Makes -w_2D
-    nl = poisson_cpu(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+    nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
+    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
 
     ### Enstrophy flux
     enst_tran_tmp = two[None,None,:]*ka2[None,:,:]*np.real(ps*np.conj(nl))*tmp 
