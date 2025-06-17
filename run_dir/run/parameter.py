@@ -6,10 +6,9 @@ import cupy as np
 ###########################
 #Tf = np.float32
 #Tc = np.complex64
-#Ti = np.int16
 Tf = np.float64
 Tc = np.complex128
-Ti = np.int32
+Ti = np.int64
 
 ################
 ### Ensemble ###

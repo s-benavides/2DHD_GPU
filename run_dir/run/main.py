@@ -73,12 +73,12 @@ if triad_phase_hist:
     
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
-    indKX = np.zeros((Ntriads,n),dtype=Ti)
-    indKY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indKX = np.zeros((Ntriads,n),dtype=Tf)
+    indKY = np.zeros((n_half,Ntriads),dtype=Tf)
     indPX = np.zeros((Ntriads,n),dtype=Ti)
-    indPY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indPY = np.zeros((n_half,Ntriads),dtype=Tf)
     indQX = np.zeros((Ntriads,n),dtype=Ti)
-    indQY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indQY = np.zeros((n_half,Ntriads),dtype=Tf)
     kmag = np.zeros((Ntriads),dtype=Tf)
     pmag = np.zeros((Ntriads),dtype=Tf)
     qmag = np.zeros((Ntriads),dtype=Tf)
@@ -122,16 +122,16 @@ if triad_phase_hist:
         indQY[ka_half==qy,Ntr] = 1
         
     # To be used in corr_check (time-series of theta statistics)
-    indKX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
-    indPX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
-    indQX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    indKX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
+    indPX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
+    indQX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
     kmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
     pmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
     qmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
-    qxp_ts = np.zeros((Ntriads_ts),dtype=Ti)
+    qxp_ts = np.zeros((Ntriads_ts),dtype=Tf)
     for Ntr,triad in enumerate(triads_ts):
         kx,ky,px,py = triad 
         qx = -kx-px
@@ -206,7 +206,7 @@ if stat==0:
     E = energy(ps,1,ka2)
     ps *= np.sqrt(2.0*u0/E[:,None,None])
 else:
-    dump = int(Tf(t)/Tf(sstep))
+    dump = np.int64(np.float64(t)/np.float64(sstep))
     times = t%sstep
     timet = t%tstep
     timec = t%cstep
