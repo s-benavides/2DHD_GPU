@@ -99,37 +99,37 @@ kfilt = np.ElementwiseKernel(
 # Nonlinear term
 # """
 NL = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tc.__name__+' fp, '+Tf.__name__+' tmp1, '+Tf.__name__+' nu, '+Tf.__name__+' hnu, '+Ti.__name__+' nn, '+Ti.__name__+' mm, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax',
+   ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tc.__name__+' fp, '+Tf.__name__+' dt, '+Tf.__name__+' nu, '+Tf.__name__+' hnu, '+Ti.__name__+' nn, '+Ti.__name__+' mm, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax',
    ''+Tc.__name__+' out',
    f"""
     if (ka2 > kmax || ka2 == 0) {{
        out = 0;
     }} else {{
-       out = (ps + ((-nl)/ka2+fp)*tmp1)/({float_name}(1.0) +(nu*pow({float_name}(ka2), {float_name}(nn)) + hnu*pow({float_name}(ka2), -{float_name}(mm)))*tmp1);
+       out = (ps + ((-nl)/ka2+fp)*dt)/({float_name}(1.0) +(nu*pow({float_name}(ka2), {float_name}(nn)) + hnu*pow({float_name}(ka2), -{float_name}(mm)))*dt);
     }}
    """,
    'NL')
 
 NL_phase_only = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' tmp1, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
+   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' dt, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
    ''+Tc.__name__+' out',
    """
     if (ka2 > kmax || ka2 == 0 || abs(in) == 0 ) {
        out = 0;
     } else {
-       out = abs(ps)*exp(I*(atan2(imag(ps), real(ps)) + tmp1*imag(exp(-I*atan2(imag(in), real(in)))*(-nl/ka2)/abs(in))));
+       out = abs(in)*exp(I* ( atan2(imag(ps), real(ps)) + imag(exp(-I*atan2(imag(in), real(in)))*(-dt*nl/ka2)/abs(in)) ) );
     }
    """,
    'NL_phase_only')
 
 NL_CE = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' T, '+Tf.__name__+' tmp1, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tf.__name__+' u0, '+Tf.__name__+' alpha',
+   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' T, '+Tf.__name__+' dt, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tf.__name__+' u0, '+Tf.__name__+' alpha',
    ''+Tc.__name__+' out',
    f"""
     if (ka2 > kmax || ka2 == 0) {{
        out = 0;
     }} else {{
-       out = (ps + ((-nl)/ka2 -in*T/(2*u0*pow({float_name}(ka2), {float_name}(-alpha/2.0))))*tmp1);
+       out = (ps + ((-nl)/ka2 -in*T/(2*u0*pow({float_name}(ka2), {float_name}(-alpha/2.0))))*dt);
     }}
    """,
    'NL_CE')
