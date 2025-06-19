@@ -1,0 +1,411 @@
+# BEFORE importing cupy 
+import os
+
+GPU_IDs = [4] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
+os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
+
+import numpy 
+import cupy as np
+import sys,os
+from pathlib import Path
+import time as time_wall
+# Import subroutines
+from subroutines import *
+
+# Read input parameters
+from parameter import *
+
+######################
+### INITIALIZATION ###
+######################
+# Set up log
+log = open('./log.txt','a')
+sys.stdout = log
+
+# Create a 'RUNNING.txt' file
+with open('./RUNNING.txt', 'w') as creating_new_txt_file:
+    pass
+print("Empty RUNNING File Created Successfully",flush=True)
+
+# If the seed is fed through an argument, it supersedes the one provided by parameter.py
+num_args = len(sys.argv)
+if num_args>1:
+    seed = int(sys.argv[1])
+    print('Using new seed = %s' % seed, flush = True)
+
+# Initialize random number generator (using numpy because it's faster)
+rng = numpy.random.default_rng(seed)
+
+#########################
+### PRECOMPUTE ARRAYS ###
+#########################
+# Builds the wave number and the square wave number matrixes
+# In spectral space, index 0 is the kx axis, index 1 is the ky axis
+# In real space, index 0 is the x axis, index 1 is the y axis
+ka = np.asarray(np.fft.fftfreq(n,d=(1/n)),dtype=Tf) # kx
+ka_half = np.asarray(np.fft.rfftfreq(n,d=(1/n)),dtype=Tf) # ky
+KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
+ka2 = KX**2+KY**2
+# Imaginary matrix
+I = 1j*np.ones((n,n_half),dtype=Tc)
+#### For shell integrating
+inds_polar = []
+for ii in range(n_half):
+    kk = ii+1
+    inds_polar.append(np.where(np.round(np.sqrt(ka2)).astype(Ti)==kk))
+#### For energy spectrum calculation
+# Round sqrt(ka2) to define radial bins
+radial_bins = np.round(np.sqrt(ka2)).astype(Ti) - 1 # Want to add kk to index kk-1
+radial_bins = np.clip(radial_bins,0,n//3) # Include kk=0 in the sum for index 0, add 'invalid' parts to index n//3+1 (to be ignored) 
+valid_mask = radial_bins>=0
+# Flattened valid bins and their positions
+flat_bins = radial_bins[valid_mask].ravel()
+two = np.ones((n_half),dtype=Tf)
+two[1:] *= 2
+KE_goal = u0*ka_half[1:n//3+2]**(-alpha)
+
+# If recording triad statistics, load relevant information
+if triad_phase_hist:
+    # Load triads for histogram
+    triads = np.loadtxt(idir+'/triads.txt',dtype=Ti)
+    Ntriads = triads.shape[0]
+    print("Gathering histogram statistics for %s triads." % Ntriads, flush = True)
+
+    # Define histogram
+    thetauuu = np.zeros((Nbins,Ntriads),dtype=Ti)
+    # Define scriptK
+    scriptK = np.zeros((2,Ntriads),dtype=np.float64)
+    # Set count to zero for scriptK average
+    i_count = 0
+
+    # Now process time-series triads
+    triads_ts = np.loadtxt(idir+'/triads_ts.txt',dtype=Ti)
+    Ntriads_ts = triads_ts.shape[0]
+    print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
+    
+    # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
+    # To be used in thetauuu_calc
+    indKX = np.zeros((Ntriads,n),dtype=Tf)
+    indKY = np.zeros((n_half,Ntriads),dtype=Tf)
+    indPX = np.zeros((Ntriads,n),dtype=Tf)
+    indPY = np.zeros((n_half,Ntriads),dtype=Tf)
+    indQX = np.zeros((Ntriads,n),dtype=Tf)
+    indQY = np.zeros((n_half,Ntriads),dtype=Tf)
+    kmag = np.zeros((Ntriads),dtype=Tf)
+    pmag = np.zeros((Ntriads),dtype=Tf)
+    qmag = np.zeros((Ntriads),dtype=Tf)
+    for Ntr,triad in enumerate(triads):
+        kx,ky,px,py = triad 
+        qx = -kx-px
+        qy = -ky-py
+        # Magnitudes
+        kmag[Ntr] = np.sqrt(kx**2+ky**2)
+        pmag[Ntr] = np.sqrt(px**2+py**2)
+        qmag[Ntr] = np.sqrt(qx**2+qy**2)
+    
+        # k
+        if (ky>=0): # phi(kx,ky)
+            sgn=1
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1
+        indKX[Ntr,ka==kx] = sgn
+        indKY[ka_half==ky,Ntr] = 1
+    
+        # p
+        if (py>=0): # phi(px,py)
+            sgn=1
+        else: # -phi(-px,-py)
+            py=-py
+            px=-px
+            sgn=-1
+        indPX[Ntr,ka==px] = sgn
+        indPY[ka_half==py,Ntr] = 1
+        
+        # q
+        if (qy>=0): # phi(qx,qy)
+            sgn=1
+        else: # -phi(-qx,-qy)
+            qy=-qy
+            qx=-qx
+            sgn=-1
+        indQX[Ntr,ka==qx] = sgn
+        indQY[ka_half==qy,Ntr] = 1
+        
+    # To be used in corr_check (time-series of theta statistics)
+    indKX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
+    indPX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
+    indQX_ts = np.zeros((Ntriads_ts,n),dtype=Tf)
+    indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Tf)
+    kmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    pmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    qmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    qxp_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    for Ntr,triad in enumerate(triads_ts):
+        kx,ky,px,py = triad 
+        qx = -kx-px
+        qy = -ky-py
+        # Magnitudes
+        kmag_ts[Ntr] = np.sqrt(kx**2+ky**2)
+        pmag_ts[Ntr] = np.sqrt(px**2+py**2)
+        qmag_ts[Ntr] = np.sqrt(qx**2+qy**2)
+    
+        # k
+        if (ky>=0): # phi(kx,ky)
+            sgn=1
+        else: # -phi(-kx,-ky)
+            ky=-ky
+            kx=-kx
+            sgn=-1
+        indKX_ts[Ntr,ka==kx] = sgn
+        indKY_ts[ka_half==ky,Ntr] = 1
+    
+        # p
+        if (py>=0): # phi(px,py)
+            sgn=1
+        else: # -phi(-px,-py)
+            py=-py
+            px=-px
+            sgn=-1
+        indPX_ts[Ntr,ka==px] = sgn
+        indPY_ts[ka_half==py,Ntr] = 1
+        
+        # q
+        if (qy>=0): # phi(qx,qy)
+            sgn=1
+        else: # -phi(-qx,-qy)
+            qy=-qy
+            qx=-qx
+            sgn=-1
+        indQX_ts[Ntr,ka==qx] = sgn
+        indQY_ts[ka_half==qy,Ntr] = 1
+        
+        # qxp
+        qxp_ts[Ntr] = qx*py-px*qy
+
+##########################
+### INITIAL CONDITIONS ###
+##########################
+# Read status.py
+stat,t,time = np.loadtxt('./status.py') # stat is the output number
+stat = int(stat)
+t = int(t)
+ini = t
+
+if stat==0:
+    dump = 0 # For use in spectra and transfers
+    t = 1 # Initial time-step
+    timet = tstep
+    timec = cstep
+    times = sstep
+    timeth = thstep
+    timethts = thtsstep
+
+    # Stream function IC (random phase up to kup)
+    ps = np.zeros((Nens,n,n_half),dtype=Tc)
+    phase = rng.uniform(low=-np.pi,high=np.pi,size=ps.shape)
+    phase = np.asarray(phase,dtype=Tf)
+    cond = (ka2<=kmax)&(ka2>=tiny)
+    ps = (np.sqrt(ka2[None,:,:]))**((-alpha-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
+    # Ensure 'realness' in the ky = 0 axis:
+    ps[:,n_half:,0] = np.flip(np.conj(ps[:,1:n_half-1,0]),axis=1)
+    ps[:,0,0] = ps[:,n_half-1,0] = 0.0
+
+    # Renormalize
+    ps *= u0*n**2
+else:
+    dump = Ti(np.float64(t)/np.float64(sstep))
+    times = t%sstep
+    timet = t%tstep
+    timec = t%cstep
+    timeth = t%thstep
+    timethts = t%thtsstep
+
+    # Load the saved output file
+    R1 = np.load(idir+'/ps.'+f'{int(stat):03}'+'.npy')
+    R1 = np.asarray(R1,dtype=Tf)
+
+    # FFT to get ps
+    ps = np.fft.rfftn(R1,axes=(1,2))
+    
+    Nens_t,_,_ = ps.shape
+    if Nens_t!=Nens:
+        print('Nens in parameter.py does NOT match Nens from the input file. Changing Nens to match the input file. Nens = %i --> Nens = %i' % (Nens,Nens_t), flush=True)
+        Nens = Nens_t
+
+    # If traid_phase_hist, then load the histogram array
+    if triad_phase_hist:
+        # Check to see if thetauuu file exists:
+        my_file = Path(odir+'/thetauuu.npy')
+        if my_file.is_file():
+            # Load
+            thetauuu[:] = np.load(my_file)[:]
+
+        # Check to see if scriptK file exists:
+        my_file = Path(odir+'/scriptK.npy')
+        if my_file.is_file():
+            # Load
+            scriptK[:] = np.load(my_file)[:]
+
+        # Also load the count file, if it exists:
+        my_file = Path(odir+'/i_count.npy')
+        if my_file.is_file():
+            # Load
+            i_count = int(np.load(my_file))
+            print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
+
+
+print('Starting from time-step %s and time %.3f.' % (t,time), flush=True)
+
+#################
+### MAIN LOOP ###
+#################
+dt = CFL_condition(ps,KX,KY,I)
+start_time=time_wall.time()
+sim_end = start_time + 60*60*H # run for H hours
+while (time_wall.time() < sim_end)&(t<=step):
+    if (t%cfl_cad)==0: # Update dt every cfl_cad time steps.
+        dt = CFL_condition(ps,KX,KY,I)
+
+    # Every 'cstep' steps, outputs global values.  
+    # See the cond_check subroutine for details.
+    if timec==cstep:
+        timec = 0
+        cond_check(ps,None,time,ka2)
+
+    # Every 1000 steps, check if RUNNING.txt is present, otherwise end the stepping and save last outputs.
+    if (t%1000)==0:
+        if not os.path.isfile('./RUNNING.txt'):
+            print("RUNNING.txt has been deleted. Stopping run. tstep = %s, time = %s" % (t,time),flush=True)
+            break
+
+    # Every 'sstep' steps, generates external files with the power spectrum
+    if times==sstep:
+        times = 0
+        dump += 1 # Update spectrum count
+        spectrum(ps,dump,ka2)
+        transfers(ps,dump,ka2,KX,KY,I,inds_polar)
+        with open('./time_spec.txt', 'a') as f:
+            f.write(f"{int(dump):04} {time:14.6F}\n")
+
+    # Every 'thstep' steps, calculates and updates thetauuu histogram and scriptK online average (if triad_phase_hist is true)
+    if ((timeth==thstep)&(triad_phase_hist)): 
+        timeth = 0
+        # Updates thetauuu
+        i_count,thetauuu,scriptK = thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
+        
+        
+    if ((timethts==thtsstep)&(triad_phase_hist)):
+        timethts = 0
+        # Output time series of triad energy and phase for various triads.
+        corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts)
+        
+    # Every 'tstep' steps, stores the results of the integration
+    if timet==tstep:
+        timet = 0
+        stat += 1
+        # Write current state to file:
+        R1 = np.fft.irfftn(ps,axes=(1,2))
+        np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
+        
+        R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
+        np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
+        
+        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+        if triad_phase_hist:
+            np.save(odir+'/thetauuu.npy',thetauuu)
+            np.save(odir+'/scriptK.npy',scriptK)
+            np.save(odir+'/i_count.npy',i_count)
+            
+        with open('./time_field.txt', 'a') as f:
+            f.write(f"{int(stat):03} {int(t)} {time:14.6F}\n")
+
+    ######## Runge-Kutta step 1
+    C3 = np.copy(ps)
+    
+    ######## Runge-Kutta step 2
+    for o in range(ord,0,-1):
+        # Nonlinear term
+        nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D
+        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)  
+        # Time step 
+        tmp1 = dt/Tf(o)
+        C3 = NL(ps,nl,0.0*ps,tmp1,nu,hnu,nn,mm,ka2[None,:,:],kmax)
+
+        # Calculate resulting spectrum 
+        # Energy density
+        # en_tmp = two[None,None,:]*np.abs(C3)**2*ka2[None,:,:]/n**4 
+        en_tmp = en_spec_calc(C3,ka2[None,:,:],two[None,None,:])/n**4
+        en_valid = en_tmp[:,valid_mask]
+                
+        # Shell sum
+        en_sum = np.zeros((Nens, n//3+1), dtype=Tf) # Including the last for summing the 'trash' into it
+        np.add.at(en_sum, (np.arange(Nens)[:, None], flat_bins[None, :]), en_valid)
+        
+        # Make correction factor:
+        en_sum = KE_goal[None,:]/en_sum
+        # Get rid of 'trash'
+        en_sum[:,-1] = 0.0
+        
+        # Now remap shell-averaged values to 2D spectral spaces
+        en = np.take(en_sum, radial_bins[None, :, :], axis=1) 
+        en = en[:,0,:,:]
+        
+        # Enforce spectral symmetry on ky=0 axis (if needed for real-valued fields)
+        # This assumes you're reconstructing later with irfft2 and need real-valued results
+        # If not required, this step can be skipped
+        en[:, n_half:, 0] = np.flip(np.conj(en[:, 1:n_half-1, 0]), axis=1)
+        en[:, 0, 0] = en[:, n_half-1, 0] = 0.0
+
+        # Finally, multiply modes:
+        C3 *= np.sqrt(en)
+        
+    ######## Runge-Kutta step 3
+    ps = np.copy(C3)
+
+    # Update times and counters
+    t += 1 
+    timet += 1
+    times += 1
+    timec += 1
+    timeth += 1
+    timethts += 1
+    time += dt   
+    
+############## END OF MAIN LOOP ##############
+end_time=time_wall.time()
+print('Finished time-stepping loop. Total wall time: %.4f, iterations per second: %.4f.' % (end_time-start_time,(t-ini)/(end_time-start_time)),flush=True)
+
+# Save last time:
+stat += 1
+print("Saving files last time... Stat = %s, iteration = %s, time = %.4e" % (stat,t,time), flush=True)
+# Write current state to file:
+R1 = np.fft.irfftn(ps,axes=(1,2))
+np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
+
+R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
+np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
+
+# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+if triad_phase_hist:
+    np.save(odir+'/thetauuu.npy',thetauuu)
+    np.save(odir+'/scriptK.npy',scriptK)
+    np.save(odir+'/i_count.npy',i_count)
+    
+with open('./time_field.txt', 'a') as f:
+    f.write(f"{int(stat):03} {int(t)} {time:14.6F}\n")
+
+# Delete RUNNING.txt if it hasn't already been deleted.
+if os.path.isfile('./RUNNING.txt'):
+    os.remove('./RUNNING.txt')
+
+# Delete variables (might not be necessary...)
+del ps,R1,C3,ka2,KX,KY,nl
+if triad_phase_hist:
+    del indKX,indKY,indPX,indPY,indQX,indQY
+    
+print('Finished saving. Exiting... \n \n',flush=True)
