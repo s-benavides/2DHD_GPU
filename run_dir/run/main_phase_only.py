@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [3] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [1] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -316,19 +316,21 @@ while (time_wall.time() < sim_end)&(t<=step):
 
     ## Phase-only time-stepping
     ######## Runge-Kutta step 1
-    C3 = np.copy(ps)
+    rho = np.abs(ps)
+    phi = np.angle(ps)
     
     ######## Runge-Kutta step 2
     for o in range(ord,0,-1):
         # Nonlinear term
-        nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D
-        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+        C1 = polar_2_complex(rho,phi,I[None,:,:]) # Complexifies
+        nl = laplak2(C1,ka2[None,:,:]) # Makes -w_2D
+        nl = poisson(C1,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
         tmp1 = dt/float(o)
-        C3 = NL_phase_only(ps,C3,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
+        phi = NL_phase_only(ps,rho,phi,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
         
     ######## Runge-Kutta step 3
-    ps = np.copy(C3)
+    ps = polar_2_complex(rho,phi,I[None,:,:])
 
     # Update times and counters
     t += 1 
@@ -367,7 +369,7 @@ if os.path.isfile('./RUNNING.txt'):
     os.remove('./RUNNING.txt')
 
 # Delete variables (might not be necessary...)
-del ps,R1,C3,ka2,KX,KY,nl
+del ps,R1,C1,rho,phi,ka2,KX,KY,nl
 if triad_phase_hist:
     del indKX,indKY,indPX,indPY,indQX,indQY
 
