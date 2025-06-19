@@ -37,6 +37,9 @@ if num_args>1:
 # Initialize random number generator (using numpy because it's faster)
 rng = numpy.random.default_rng(seed)
 
+#########################
+### PRECOMPUTE ARRAYS ###
+#########################
 # Builds the wave number and the square wave number matrixes
 # In spectral space, index 0 is the kx axis, index 1 is the ky axis
 # In real space, index 0 is the x axis, index 1 is the y axis

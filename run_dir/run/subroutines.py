@@ -110,30 +110,34 @@ NL = np.ElementwiseKernel(
    """,
    'NL')
 
+##########################
+### Phase-only Kernels ###
+# """
+# Nonlinear term, only evolves the phases phi
+# """
 NL_phase_only = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' dt, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
-   ''+Tc.__name__+' out',
+   ''+Tc.__name__+' ps, '+Tf.__name__+' rho,'+Tf.__name__+' phi, '+Tc.__name__+' nl, '+Tf.__name__+' dt, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
+   ''+Tf.__name__+' out',
    """
-    if (ka2 > kmax || ka2 == 0 || abs(in) == 0 ) {
+    if (ka2 > kmax || ka2 == 0 || rho == 0 ) {
        out = 0;
     } else {
-       out = abs(in)*exp(I* ( atan2(imag(ps), real(ps)) + imag(exp(-I*atan2(imag(in), real(in)))*(-dt*nl/ka2)/abs(in)) ) );
+       out = atan2(imag(ps), real(ps)) + imag(exp(-I*phi)*(-dt*nl/ka2)/rho);
     }
    """,
    'NL_phase_only')
 
-NL_CE = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps, '+Tc.__name__+' in, '+Tc.__name__+' nl, '+Tf.__name__+' T, '+Tf.__name__+' dt, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tf.__name__+' u0, '+Tf.__name__+' alpha',
+# """
+# Going from polar (rho,phi) to complex.
+# """
+polar_2_complex = np.ElementwiseKernel(
+   ''+Tf.__name__+' rho,'+Tf.__name__+' phi, '+Tc.__name__+' I',
    ''+Tc.__name__+' out',
-   f"""
-    if (ka2 > kmax || ka2 == 0) {{
-       out = 0;
-    }} else {{
-       out = (ps + ((-nl)/ka2 -in*T/(2*u0*pow({float_name}(ka2), {float_name}(-alpha/2.0))))*dt);
-    }}
-   """,
-   'NL_CE')
+   'out = rho*exp(I*phi)',
+   'polar_2_complex')
 
+######################
+### Other Kernels #### 
 # """
 # Used in corr_check
 # """
@@ -163,6 +167,28 @@ scriptK_calc = np.ElementwiseKernel(
     }}
     """,
    'scriptK_calc')
+
+# """
+# Calculate energy transfer term
+# """
+en_tran_calc = np.ElementwiseKernel(
+   ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tf.__name__+' two',
+   ''+Tf.__name__+' out',
+   f"""
+    out = two*real(ps*conj(nl));
+    """,
+   'en_tran_calc')
+
+# """
+# Calculate energy spectrum
+# """
+en_spec_calc = np.ElementwiseKernel(
+   ''+Tc.__name__+' ps, '+Tf.__name__+' ka2, '+Tf.__name__+' two',
+   ''+Tf.__name__+' out',
+   f"""
+    out = two*ka2*pow({float_name}(abs(ps)), {float_name}(2.0));
+    """,
+   'en_spec_calc')
 
 ###########################
 ### Spectral operations ###
@@ -421,7 +447,8 @@ def spectrum(ps,dump,ka2):
     two[1:] *= 2
     tmp = 1/n**4
     # Energy density
-    E = np.pi*np.sqrt(ka2[None,:,:])*two[None,None,:]*np.abs(ps)**2*ka2[None,:,:]*tmp # Multiply by Pi * K for integral 
+    E = en_spec_calc(ps,ka2[None,:,:],two[None,None,:])
+    E *= np.pi*np.sqrt(ka2[None,:,:])*tmp # Multiply by Pi * K for integral 
     # Average over ensembles
     E = np.mean(E,axis=0)
 
@@ -465,13 +492,11 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
     nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
     nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
 
-    ### Enstrophy flux
-    enst_tran_tmp = two[None,None,:]*ka2[None,:,:]*np.real(ps*np.conj(nl))*tmp 
-    enst_tran = np.zeros((Nens,n_half))  
-
-    ### Energy flux
-    en_tran_tmp = two[None,None,:]*np.real(ps*np.conj(nl))*tmp
-    en_tran = np.zeros((Nens,n_half))
+    ### Energy and Enstrophy flux
+    en_tran_tmp = en_tran_calc(ps,nl,two[None,None,:])*tmp
+    enst_tran_tmp = en_tran_tmp*ka2[None,:,:]
+    enst_tran = np.zeros((Nens,n_half),dtype=Tf)  
+    en_tran = np.zeros((Nens,n_half),dtype=Tf)
 
     # Shell averaging
     for ii in range(n_half):
