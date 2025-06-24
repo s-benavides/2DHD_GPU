@@ -666,7 +666,6 @@ def corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,
 
     # Define d theta / dt (to be used for noise calculation)
     dt_theta = dt_phiks + dt_phips + dt_phiqs # No need to make periodic
-    dt_theta = dt_theta * tmp # Normalizing based on grid
     corr_dat[3,:] = dt_theta
 
     # Open file in append mode and write data
