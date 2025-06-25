@@ -136,6 +136,10 @@ if triad_phase_hist:
         kx,ky,px,py = triad 
         qx = -kx-px
         qy = -ky-py
+        
+        # qxp
+        qxp_ts[Ntr] = qx*py-px*qy
+        
         # Magnitudes
         kmag_ts[Ntr] = np.sqrt(kx**2+ky**2)
         pmag_ts[Ntr] = np.sqrt(px**2+py**2)
@@ -170,9 +174,6 @@ if triad_phase_hist:
             sgn=-1
         indQX_ts[Ntr,ka==qx] = sgn
         indQY_ts[ka_half==qy,Ntr] = 1
-        
-        # qxp
-        qxp_ts[Ntr] = qx*py-px*qy
 
 ##########################
 ### INITIAL CONDITIONS ###
