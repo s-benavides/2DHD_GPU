@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [1] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [0] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -225,9 +225,12 @@ else:
     ps = np.fft.rfftn(R1,axes=(1,2))
     
     Nens_t,_,_ = ps.shape
-    if Nens_t!=Nens:
+    if Nens_t<Nens:
         print('Nens in parameter.py does NOT match Nens from the input file. Changing Nens to match the input file. Nens = %i --> Nens = %i' % (Nens,Nens_t), flush=True)
         Nens = Nens_t
+    elif Nens_t>Nens:
+        print('Nens in parameter.py does NOT match Nens from the input file. Changing the shape of ps to match Nens. shape[0] = %i --> %i' % (ps.shape[0],Nens), flush=True)
+        ps = ps[:Nens,:,:]
 
     # If traid_phase_hist, then load the histogram array
     if triad_phase_hist:
