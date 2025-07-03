@@ -1,5 +1,5 @@
 # 2DHD GPU
-About
+### About
 Pseudo-spectral solver for the two-dimensional Navier Stokes equations. Written in Python, and uses CuPy to provide GPU acceleration.
 
 ### Santiago J. Benavides 
