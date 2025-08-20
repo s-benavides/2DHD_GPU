@@ -61,15 +61,20 @@ if triad_phase_hist:
 
     # Define histogram
     thetauuu = np.zeros((Nbins,Ntriads),dtype=Ti)
-    # Define scriptK
+    # Define scriptK and other averaged quantities
     scriptK = np.zeros((2,Ntriads),dtype=Tf)
-    # Set count to zero for scriptK average
+    rhok = np.zeros((2,Ntriads),dtype=Tf)
+    rhop = np.zeros((2,Ntriads),dtype=Tf)
+    rhoq = np.zeros((2,Ntriads),dtype=Tf)
+    Rkpq = np.zeros((2,Ntriads),dtype=Tf)
+    Tkpq = np.zeros((2,Ntriads),dtype=Tf)
+    # Set count to zero for averages
     i_count = 0
 
-    # Now process time-series triads
-    triads_ts = np.loadtxt(idir+'/triads_ts.txt',dtype=Ti)
-    Ntriads_ts = triads_ts.shape[0]
-    print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
+    # # Now process time-series triads
+    # triads_ts = np.loadtxt(idir+'/triads_ts.txt',dtype=Ti)
+    # Ntriads_ts = triads_ts.shape[0]
+    # print("Gathering temporal statistics for %s triads." % Ntriads_ts, flush = True)
     
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
@@ -121,59 +126,59 @@ if triad_phase_hist:
         indQX[Ntr,ka==qx] = sgn
         indQY[ka_half==qy,Ntr] = 1
         
-    # To be used in corr_check (time-series of theta statistics)
-    indKX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
-    indPX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
-    indQX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
-    indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
-    kmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
-    pmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
-    qmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
-    qxp_ts = np.zeros((Ntriads_ts),dtype=Ti)
-    for Ntr,triad in enumerate(triads_ts):
-        kx,ky,px,py = triad 
-        qx = -kx-px
-        qy = -ky-py
+    # # To be used in corr_check (time-series of theta statistics)
+    # indKX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    # indKY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    # indPX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    # indPY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    # indQX_ts = np.zeros((Ntriads_ts,n),dtype=Ti)
+    # indQY_ts = np.zeros((n_half,Ntriads_ts),dtype=Ti)
+    # kmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    # pmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    # qmag_ts = np.zeros((Ntriads_ts),dtype=Tf)
+    # qxp_ts = np.zeros((Ntriads_ts),dtype=Ti)
+    # for Ntr,triad in enumerate(triads_ts):
+    #     kx,ky,px,py = triad 
+    #     qx = -kx-px
+    #     qy = -ky-py
         
-        # qxp
-        qxp_ts[Ntr] = qx*py-px*qy
+    #     # qxp
+    #     qxp_ts[Ntr] = qx*py-px*qy
         
-        # Magnitudes
-        kmag_ts[Ntr] = np.sqrt(kx**2+ky**2)
-        pmag_ts[Ntr] = np.sqrt(px**2+py**2)
-        qmag_ts[Ntr] = np.sqrt(qx**2+qy**2)
+    #     # Magnitudes
+    #     kmag_ts[Ntr] = np.sqrt(kx**2+ky**2)
+    #     pmag_ts[Ntr] = np.sqrt(px**2+py**2)
+    #     qmag_ts[Ntr] = np.sqrt(qx**2+qy**2)
     
-        # k
-        if (ky>=0): # phi(kx,ky)
-            sgn=1
-        else: # -phi(-kx,-ky)
-            ky=-ky
-            kx=-kx
-            sgn=-1
-        indKX_ts[Ntr,ka==kx] = sgn
-        indKY_ts[ka_half==ky,Ntr] = 1
+    #     # k
+    #     if (ky>=0): # phi(kx,ky)
+    #         sgn=1
+    #     else: # -phi(-kx,-ky)
+    #         ky=-ky
+    #         kx=-kx
+    #         sgn=-1
+    #     indKX_ts[Ntr,ka==kx] = sgn
+    #     indKY_ts[ka_half==ky,Ntr] = 1
     
-        # p
-        if (py>=0): # phi(px,py)
-            sgn=1
-        else: # -phi(-px,-py)
-            py=-py
-            px=-px
-            sgn=-1
-        indPX_ts[Ntr,ka==px] = sgn
-        indPY_ts[ka_half==py,Ntr] = 1
+    #     # p
+    #     if (py>=0): # phi(px,py)
+    #         sgn=1
+    #     else: # -phi(-px,-py)
+    #         py=-py
+    #         px=-px
+    #         sgn=-1
+    #     indPX_ts[Ntr,ka==px] = sgn
+    #     indPY_ts[ka_half==py,Ntr] = 1
         
-        # q
-        if (qy>=0): # phi(qx,qy)
-            sgn=1
-        else: # -phi(-qx,-qy)
-            qy=-qy
-            qx=-qx
-            sgn=-1
-        indQX_ts[Ntr,ka==qx] = sgn
-        indQY_ts[ka_half==qy,Ntr] = 1
+    #     # q
+    #     if (qy>=0): # phi(qx,qy)
+    #         sgn=1
+    #     else: # -phi(-qx,-qy)
+    #         qy=-qy
+    #         qx=-qx
+    #         sgn=-1
+    #     indQX_ts[Ntr,ka==qx] = sgn
+    #     indQY_ts[ka_half==qy,Ntr] = 1
 
 ##########################
 ### INITIAL CONDITIONS ###
@@ -244,13 +249,38 @@ else:
         if my_file.is_file():
             # Load
             scriptK[:] = np.load(my_file)[:]
-
+        # Check to see if rhok file exists:
+        my_file = Path(odir+'/rhok.npy')
+        if my_file.is_file():
+            # Load
+            rhok[:] = np.load(my_file)[:]
+        # Check to see if rhop file exists:
+        my_file = Path(odir+'/rhop.npy')
+        if my_file.is_file():
+            # Load
+            rhop[:] = np.load(my_file)[:]
+        # Check to see if rhoq file exists:
+        my_file = Path(odir+'/rhoq.npy')
+        if my_file.is_file():
+            # Load
+            rhoq[:] = np.load(my_file)[:]
+        # Check to see if Rkpq file exists:
+        my_file = Path(odir+'/Rkpq.npy')
+        if my_file.is_file():
+            # Load
+            Rkpq[:] = np.load(my_file)[:]
+        # Check to see if Tkpq file exists:
+        my_file = Path(odir+'/Tkpq.npy')
+        if my_file.is_file():
+            # Load
+            Tkpq[:] = np.load(my_file)[:]
+            
         # Also load the count file, if it exists:
         my_file = Path(odir+'/i_count.npy')
         if my_file.is_file():
             # Load
             i_count = int(np.load(my_file))
-            print('Continuing average of scriptK, i_count = %i' % i_count, flush=True)
+            print('Continuing average, i_count = %i' % i_count, flush=True)
 
 
 print('Starting from time-step %s and time %.3f.' % (t,time), flush=True)
@@ -286,17 +316,17 @@ while (time_wall.time() < sim_end)&(t<=step):
         with open('./time_spec.txt', 'a') as f:
             f.write(f"{int(dump):04} {time:14.6F}\n")
 
-    # Every 'thstep' steps, calculates and updates thetauuu histogram and scriptK online average (if triad_phase_hist is true)
+    # Every 'thstep' steps, calculates and updates thetauuu histogram and online averages (if triad_phase_hist is true)
     if ((timeth==thstep)&(triad_phase_hist)): 
         timeth = 0
         # Updates thetauuu
-        i_count,thetauuu,scriptK = thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
+        i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq = thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
         
         
-    if ((timethts==thtsstep)&(triad_phase_hist)):
-        timethts = 0
-        # Output time series of triad energy and phase for various triads.
-        corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts)
+    # if ((timethts==thtsstep)&(triad_phase_hist)):
+    #     timethts = 0
+    #     # Output time series of triad energy and phase for various triads.
+    #     corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts)
         
     # Every 'tstep' steps, stores the results of the integration
     if timet==tstep:
@@ -309,10 +339,15 @@ while (time_wall.time() < sim_end)&(t<=step):
         R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
         np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
         
-        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+        # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates average files.
         if triad_phase_hist:
             np.save(odir+'/thetauuu.npy',thetauuu)
             np.save(odir+'/scriptK.npy',scriptK)
+            np.save(odir+'/rhok.npy',rhok)
+            np.save(odir+'/rhop.npy',rhop)
+            np.save(odir+'/rhoq.npy',rhoq)
+            np.save(odir+'/Rkpq.npy',Rkpq)
+            np.save(odir+'/Tkpq.npy',Tkpq)
             np.save(odir+'/i_count.npy',i_count)
             
         with open('./time_field.txt', 'a') as f:
@@ -359,10 +394,15 @@ np.save(odir+'/ps.'+f'{int(stat):03}'+'.npy',R1)
 R1 = np.fft.irfftn(-laplak2(ps,ka2),axes=(1,2))
 np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
 
-# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates scriptK average file.
+# If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates average files.
 if triad_phase_hist:
     np.save(odir+'/thetauuu.npy',thetauuu)
     np.save(odir+'/scriptK.npy',scriptK)
+    np.save(odir+'/rhok.npy',rhok)
+    np.save(odir+'/rhop.npy',rhop)
+    np.save(odir+'/rhoq.npy',rhoq)
+    np.save(odir+'/Rkpq.npy',Rkpq)
+    np.save(odir+'/Tkpq.npy',Tkpq)
     np.save(odir+'/i_count.npy',i_count)
     
 with open('./time_field.txt', 'a') as f:

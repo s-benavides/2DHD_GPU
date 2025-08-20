@@ -154,7 +154,7 @@ dphi_dt = np.ElementwiseKernel(
    'dphi_dt')
 
 # """
-# scriptK calculations
+# Averages calculations, to be used in thetauuu_calc
 # """
 scriptK_calc = np.ElementwiseKernel(
    ''+Tf.__name__+' kmag, '+Tf.__name__+' pmag, '+Tf.__name__+' qmag,'+Tf.__name__+' rhoks, '+Tf.__name__+' rhops, '+Tf.__name__+' rhoqs',
@@ -167,6 +167,18 @@ scriptK_calc = np.ElementwiseKernel(
     }}
     """,
    'scriptK_calc')
+
+averages_calc = np.ElementwiseKernel(
+   ''+Tf.__name__+' rhoks,'+Tf.__name__+' rhops,'+Tf.__name__+' rhoqs,'+Tf.__name__+' thetas,'+Tf.__name__+' tmp',
+   ''+Tf.__name__+' rhoks_tmp,'+Tf.__name__+' rhops_tmp,'+Tf.__name__+' rhoqs_tmp,'+Tf.__name__+' Rkpq,'+Tf.__name__+' Tkpq',
+   """
+   rhoks_tmp = tmp*rhoks;
+   rhops_tmp = tmp*rhops;
+   rhoqs_tmp = tmp*rhoqs;
+   Rkpq = rhoks_tmp*rhops_tmp*rhoqs_tmp;
+   Tkpq = Rkpq*cos(thetas);
+   """,
+   'averages_calc')
 
 # """
 # Calculate energy transfer term
@@ -530,7 +542,7 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
         
     return
 
-def thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag):
+def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag):
     """
     Updates the histogram for theta and scriptK, as well as updates the count for the averaging. 
 
@@ -540,6 +552,11 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQ
      i_count : count for statistics
      thetauuu : the PDF of the triad phases
      scriptK : the average value and variance of the K coefficient
+     rhok : the average value and variance of rhok
+     rhop : the average value and variance of rhop
+     rhoq : the average value and variance of rhoq
+     Rkpq : the average value and variance of rhok*rhop*rhoq
+     Tkpq : the average value and variance of rhok*rhop*rhoq*cos(theta)
      ind*: array used to isolate triads through dot products (to avoid for-loops).
      *mag: magnitudes of triads
     
@@ -601,77 +618,114 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,indKX,indKY,indPX,indPY,indQX,indQ
     
     ## Update the mean
     scriptK[0,:] = scriptK_avg_tmp
-                       
-    return i_count,thetauuu,scriptK
 
-def corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts):
-    """
-    Calculates theta, dt(theta), the 'noise term' and scriptK for a set of triads, and writes these values to a time series file.
+    ######### rhos, R, and T averages
+    # Calculate products on the GPU, and make sure to normalize based on grid
+    # rhok_tmp = tmp * rhoks
+    # rhop_tmp = tmp * rhops
+    # rhoq_tmp = tmp * rhoqs
+    # Rkpq_tmp = rhok_tmp * rhop_tmp * rhoq_tmp
+    # Tkpq_tmp = Rkpq_tmp * np.cos(thetas)
+    rhok_tmp,rhop_tmp,rhoq_tmp,Rkpq_tmp,Tkpq_tmp = averages_calc(rhoks,rhops,rhoqs,thetas,tmp)
 
-    ARGUMENTS
-     ps  : streamfunction
-     time: time
-     ka2: the square of the wave vector
-     KX : wave-vector kx
-     KY : wave-vector ky
-     I : Imaginary matrix.
-     ind*: array used to isolate triads through dot products (to avoid for-loops).
-     *mag: magnitudes of triads
-
-    RETURNS
-     Nothing. Saves to file.
-    """
-    Ntriads_ts = indKX_ts.shape[0]
-
-    # Define the time series variable
-    corr_dat = np.zeros((4,Nens,Ntriads_ts),dtype=Tf)
-
-    # Normalization
-    tmp = 1/n**2
-
-    # For calculating dt(theta), to be used for the noise term.
-    nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
-    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
-    dphidt = dphi_dt(ps,nl,ka2[None,:,:],kmax,I[None,:,:])
-
-    # Isolate individual triad rhos and phis
-    rhos = np.abs(ps)
-    rhoks = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, rhos),indKY_ts)) # Need abs to prevent rho<0 due to sgn
-    rhops = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, rhos),indPY_ts)) # Need abs to prevent rho<0 due to sgn
-    rhoqs = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, rhos),indQY_ts)) # Need abs to prevent rho<0 due to sgn
-    phis = np.angle(ps)
-    phiks = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, phis),indKY_ts)
-    phips = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, phis),indPY_ts)
-    phiqs = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, phis),indQY_ts)
-    dt_phiks = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, dphidt),indKY_ts)
-    dt_phips = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, dphidt),indPY_ts)
-    dt_phiqs = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, dphidt),indQY_ts)
-
-    # Define thetauuu
-    theta = phiks + phips + phiqs
-    theta = theta - 2*np.pi*np.round(theta/np.pi/2) # From [-pi,pi]
-    corr_dat[0,:] = theta
-
-    # # Define triad energy
-    R_tr = np.abs(rhoks*rhops*rhoqs)*tmp**3 # Normalizing based on grid
-    corr_dat[1,:] = R_tr
-
-    # Define coefficient scriptK (in front of self-interaction term)
-    scriptK_tmp = scriptK_calc(kmag_ts[None,:],pmag_ts[None,:],qmag_ts[None,:],rhoks,rhops,rhoqs)
-    # Multilpy by -qxp to make it the coefficient of dt(theta)
-    scriptK_tmp = -qxp_ts[None,:] * scriptK_tmp
-    # Normalize based on grid
-    scriptK_tmp = scriptK_tmp * tmp
-    corr_dat[2,:] = scriptK_tmp  
-
-    # Define d theta / dt (to be used for noise calculation)
-    dt_theta = dt_phiks + dt_phips + dt_phiqs # No need to make periodic
-    corr_dat[3,:] = dt_theta
-
-    # Open file in append mode and write data
-    with open("triad_energy_phase.txt", "a") as f:
-        formatted_data = " ".join(f"{x:23.14E}" for x in np.hstack(([time], corr_dat.flatten())))
-        f.write(formatted_data + "\n")
+    # Calculate ensemble mean
+    rhok_tmp = np.mean(rhok_tmp,axis=0)
+    rhop_tmp = np.mean(rhop_tmp,axis=0)
+    rhoq_tmp = np.mean(rhoq_tmp,axis=0)
+    Rkpq_tmp = np.mean(Rkpq_tmp,axis=0)
+    Tkpq_tmp = np.mean(Tkpq_tmp,axis=0)
     
-    return
+    ## Calculate the time mean of ensemble mean
+    rhok_avg_tmp = rhok[0,:] + (rhok_tmp - rhok[0,:])/i_count
+    rhop_avg_tmp = rhop[0,:] + (rhop_tmp - rhop[0,:])/i_count
+    rhoq_avg_tmp = rhoq[0,:] + (rhoq_tmp - rhoq[0,:])/i_count
+    Rkpq_avg_tmp = Rkpq[0,:] + (Rkpq_tmp - Rkpq[0,:])/i_count
+    Tkpq_avg_tmp = Tkpq[0,:] + (Tkpq_tmp - Tkpq[0,:])/i_count
+    
+    ## Update the time variance of the ensemble mean
+    rhok[1,:] = rhok[1,:] + ((rhok_tmp-rhok[0,:])*(rhok_tmp-rhok_avg_tmp) - rhok[1,:])/i_count
+    rhop[1,:] = rhop[1,:] + ((rhop_tmp-rhop[0,:])*(rhop_tmp-rhop_avg_tmp) - rhop[1,:])/i_count
+    rhoq[1,:] = rhoq[1,:] + ((rhoq_tmp-rhoq[0,:])*(rhoq_tmp-rhoq_avg_tmp) - rhoq[1,:])/i_count
+    Rkpq[1,:] = Rkpq[1,:] + ((Rkpq_tmp-Rkpq[0,:])*(Rkpq_tmp-Rkpq_avg_tmp) - Rkpq[1,:])/i_count
+    Tkpq[1,:] = Tkpq[1,:] + ((Tkpq_tmp-Tkpq[0,:])*(Tkpq_tmp-Tkpq_avg_tmp) - Tkpq[1,:])/i_count
+    
+    ## Update the mean
+    rhok[0,:] = rhok_avg_tmp
+    rhop[0,:] = rhop_avg_tmp
+    rhoq[0,:] = rhoq_avg_tmp
+    Rkpq[0,:] = Rkpq_avg_tmp
+    Tkpq[0,:] = Tkpq_avg_tmp
+
+    return i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq
+
+# def corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts):
+#     """
+#     Calculates theta, dt(theta), the 'noise term' and scriptK for a set of triads, and writes these values to a time series file.
+
+#     ARGUMENTS
+#      ps  : streamfunction
+#      time: time
+#      ka2: the square of the wave vector
+#      KX : wave-vector kx
+#      KY : wave-vector ky
+#      I : Imaginary matrix.
+#      ind*: array used to isolate triads through dot products (to avoid for-loops).
+#      *mag: magnitudes of triads
+
+#     RETURNS
+#      Nothing. Saves to file.
+#     """
+#     Ntriads_ts = indKX_ts.shape[0]
+
+#     # Define the time series variable
+#     corr_dat = np.zeros((4,Nens,Ntriads_ts),dtype=Tf)
+
+#     # Normalization
+#     tmp = 1/n**2
+
+#     # For calculating dt(theta), to be used for the noise term.
+#     nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
+#     nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+#     dphidt = dphi_dt(ps,nl,ka2[None,:,:],kmax,I[None,:,:])
+
+#     # Isolate individual triad rhos and phis
+#     rhos = np.abs(ps)
+#     rhoks = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, rhos),indKY_ts)) # Need abs to prevent rho<0 due to sgn
+#     rhops = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, rhos),indPY_ts)) # Need abs to prevent rho<0 due to sgn
+#     rhoqs = np.abs(np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, rhos),indQY_ts)) # Need abs to prevent rho<0 due to sgn
+#     phis = np.angle(ps)
+#     phiks = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, phis),indKY_ts)
+#     phips = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, phis),indPY_ts)
+#     phiqs = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, phis),indQY_ts)
+#     dt_phiks = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indKX_ts, dphidt),indKY_ts)
+#     dt_phips = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX_ts, dphidt),indPY_ts)
+#     dt_phiqs = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX_ts, dphidt),indQY_ts)
+
+#     # Define thetauuu
+#     theta = phiks + phips + phiqs
+#     theta = theta - 2*np.pi*np.round(theta/np.pi/2) # From [-pi,pi]
+#     corr_dat[0,:] = theta
+
+#     # # Define triad energy
+#     R_tr = np.abs(rhoks*rhops*rhoqs)*tmp**3 # Normalizing based on grid
+#     corr_dat[1,:] = R_tr
+
+#     # Define coefficient scriptK (in front of self-interaction term)
+#     scriptK_tmp = scriptK_calc(kmag_ts[None,:],pmag_ts[None,:],qmag_ts[None,:],rhoks,rhops,rhoqs)
+#     # Multilpy by -qxp to make it the coefficient of dt(theta)
+#     scriptK_tmp = -qxp_ts[None,:] * scriptK_tmp
+#     # Normalize based on grid
+#     scriptK_tmp = scriptK_tmp * tmp
+#     corr_dat[2,:] = scriptK_tmp  
+
+#     # Define d theta / dt (to be used for noise calculation)
+#     dt_theta = dt_phiks + dt_phips + dt_phiqs # No need to make periodic
+#     corr_dat[3,:] = dt_theta
+
+#     # Open file in append mode and write data
+#     with open("triad_energy_phase.txt", "a") as f:
+#         formatted_data = " ".join(f"{x:23.14E}" for x in np.hstack(([time], corr_dat.flatten())))
+#         f.write(formatted_data + "\n")
+    
+#     return
 
