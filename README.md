@@ -4,7 +4,7 @@ Pseudo-spectral solver for the two-dimensional Navier Stokes equations. Written 
 
 ### Santiago J. Benavides 
 
-(santiago.benavides@upm.es)
+(Santiago.Benavides@ed.ac.uk)
 
 Foundation of pseudospectral code is based on a 2D Fortran code written by Pablo Mininni (Universidad de Buenos Aires).
 
