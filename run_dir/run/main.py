@@ -47,6 +47,9 @@ ka = np.asarray(np.fft.fftfreq(n,d=(1/n)),dtype=Tf) # kx
 ka_half = np.asarray(np.fft.rfftfreq(n,d=(1/n)),dtype=Tf) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
+# Constant injection count:
+cond = (np.sqrt(ka2)<kup)&(np.sqrt(ka2)>kdn)
+Nf = np.sum(cond)
 # Imaginary matrix
 I = 1j*np.ones((n,n_half),dtype=Tc)
 # For fractional dimension decimation (if dec_dim < 2), we build the projectorb
@@ -322,7 +325,7 @@ if iflow==1:
     E = energy(fp,1,ka2)
     fp *= fp0/np.sqrt(E[:,None,None])
 elif iflow==2:
-    fp = const_inj(ps,ka2,rng)
+    fp = const_inj(ps,ka2,rng,Nf)
 elif iflow==3:
     fp = rand_force(dt,ka2,ka,ka_half,rng)
 else:
@@ -406,7 +409,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     for o in range(ord,0,-1):
         # Iflow2: change forcing to keep constant energy
         if iflow==2:
-            fp = const_inj(C3,ka2,rng)
+            fp = const_inj(C3,ka2,rng,Nf)
             
         # Nonlinear term
         nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D

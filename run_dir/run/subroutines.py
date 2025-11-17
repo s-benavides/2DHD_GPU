@@ -81,6 +81,20 @@ dealias = np.ElementwiseKernel(
     'dealias')
 
 # """
+# No-phase forcing
+# """
+no_phase = np.ElementwiseKernel(
+    ''+Tc.__name__+' a, '+Tf.__name__+' ka2, '+Tf.__name__+' kup, '+Tf.__name__+' kdn',
+    ''+Tc.__name__+' b',
+    '''
+    if (sqrt(ka2) > kup || sqrt(ka2) < kdn || abs(a)==0) {
+       b = 0;
+    } else {
+       b = 1.0/(ka2*conj(a));
+    }
+    ''',
+    'no_phase')
+# """
 # Filter
 # """
 kfilt = np.ElementwiseKernel(
@@ -328,7 +342,7 @@ def CFL_condition(ps,KX,KY,I):
     
     return dt
 
-def const_inj(ps,ka2,rng):
+def const_inj(ps,ka2,rng,Nf):
     """
     This subroutine assures that we inject constant energy.
     It is called when iflow == 2
@@ -341,26 +355,38 @@ def const_inj(ps,ka2,rng):
     RETURNS
      fp : forcing function
     """
-    fp = np.zeros(ps.shape,dtype=Tc)
-    cond = (ka2<=kup**2)&(ka2>=kdn**2)
-    # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
-    fp[:,cond]=ps[:,cond]/(np.abs(ps[:,cond])+1.0)
-    # Ensure 'realness' in the ky = 0 axis:
-    fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
-    fp[:,0,0] = fp[:,n_half-1,0] = 0.0
+    # fp = np.zeros(ps.shape,dtype=Tc)
+    # cond = (ka2[:,:]<=kup**2)&(ka2[:,:]>=kdn**2)
+    # # cond = (ka2[None,:,:]<=kup**2)&(ka2[None,:,:]>=kdn**2)&(np.abs(ps)>0)
+    
+    # # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
+    # fp[:,cond]=ps[:,cond]/(np.abs(ps[:,cond])+1.0)
 
-    # Rescale
-    E = inerprod(ps,fp,1,ka2)
-    # Random number
-    tmp = rng.uniform(low=-1,high=1,size=ps.shape)
-    tmp = np.asarray(tmp,dtype=Tf)*np.sqrt(ka2[None,:,:])
+    # # Rescale
+    # E = inerprod(ps,fp,1,ka2)
+    # # Random number
+    # tmp = rng.uniform(low=-1,high=1,size=ps.shape)
+    # tmp = np.asarray(tmp,dtype=Tf)*np.sqrt(ka2[None,:,:])
 
-    fp *= fp0/E[:,None,None]
-    fp[:,cond] += 1j*(tmp*ps)[:,cond]
+    # fp *= fp0/E[:,None,None]
+    # fp[:,cond] += 1j*(tmp*ps)[:,cond]
+    
+    # # Ensure 'realness' in the ky = 0 axis:
+    # fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
+    # fp[:,0,0] = fp[:,n_half-1,0] = 0.0
+
+    # Xiao 2009 or no-phase forcing
+    fp = no_phase(ps,ka2[None,:,:],kup,kdn)
+    
     # Ensure 'realness' in the ky = 0 axis:
     fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
     fp[:,0,0] = fp[:,n_half-1,0] = 0.0
     
+    # Rescale for constant energy injection rate
+    # E = inerprod(ps,fp,1,ka2)
+    # fp *= fp0/E[:,None,None]
+    fp *= n**4*fp0/Nf/2
+
     return fp
 
 def rand_force(dt,ka2,ka,ka_half,rng):
