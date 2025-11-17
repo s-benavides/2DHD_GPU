@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [0] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [4] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -49,6 +49,16 @@ KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
 # Imaginary matrix
 I = 1j*np.ones((n,n_half),dtype=Tc)
+# For fractional dimension decimation (if dec_dim < 2), we build the projectorb
+if dec_dim < 2.0:
+    # First draw a random uniform distribution
+    P_pre = np.asarray(rng.uniform(size=(Nens,n,n_half)),dtype=Tf)
+    # Now apply the condition as a function of k
+    P_frac = np.asarray((P_pre <= np.sqrt(ka2[None,:,:])**(dec_dim-2)),dtype=Tf)
+    # Ensure 'realness' in the ky = 0 axis when projecting
+    P_frac[:,n_half:,0] = np.flip(np.conj(P_frac[:,1:n_half-1,0]),axis=1)
+    P_frac[:,0,0] = P_frac[:,n_half-1,0] = 0.0
+    
 # For shell integrating
 inds_polar = []
 for ii in range(n_half):
@@ -207,6 +217,9 @@ if stat==0:
     phase = np.asarray(phase,dtype=Tf)
     cond = (ka2<=kup**2)&(ka2>=tiny)
     ps = (np.sqrt(ka2[None,:,:])/kup)**((-alpha-3.0)/2.0) * (np.cos(phase) + 1j*np.sin(phase)) * cond[None,:,:]
+    # If dec_dim < 2, project:
+    if dec_dim < 2.0:
+        ps *= P_frac
     # Ensure 'realness' in the ky = 0 axis:
     ps[:,n_half:,0] = np.flip(np.conj(ps[:,1:n_half-1,0]),axis=1)
     ps[:,0,0] = ps[:,n_half-1,0] = 0.0
@@ -301,6 +314,10 @@ if iflow==1:
     fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
     fp[:,0,0] = fp[:,n_half-1,0] = 0.0
     
+    # If dec_dim < 2, project:
+    if dec_dim < 2.0:
+        fp *= P_frac
+    
     # Renormalize
     E = energy(fp,1,ka2)
     fp *= fp0/np.sqrt(E[:,None,None])
@@ -394,6 +411,9 @@ while (time_wall.time() < sim_end)&(t<=step):
         # Nonlinear term
         nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D
         nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+        # If dec_dim < 2, project NL term into lattice
+        if dec_dim < 2.0:
+            nl *= P_frac
         
         tmp1 = dt/Tf(o)
         C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2[None,:,:],kmax)
