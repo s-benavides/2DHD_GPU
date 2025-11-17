@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [1] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [4] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -366,7 +366,8 @@ while (time_wall.time() < sim_end)&(t<=step):
         nl = poisson(C1,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
         tmp1 = dt/float(o)
-        phi = NL_phase_only(ps,rho,phi,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
+        phi = NL_phase_only_force(ps,rho,phi,nl,tmp1,kdn,kup,ka2[None,:,:],kmax,I[None,:,:])
+        # phi = NL_phase_only(ps,rho,phi,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
         
     ######## Runge-Kutta step 3
     ps = polar_2_complex(rho,phi,I[None,:,:])

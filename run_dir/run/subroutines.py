@@ -128,6 +128,23 @@ NL_phase_only = np.ElementwiseKernel(
    'NL_phase_only')
 
 # """
+# Nonlinear term, only evolves the phases phi, but fixes phases in a range of scales based on kdn and kup
+# """
+NL_phase_only_force = np.ElementwiseKernel(
+   ''+Tc.__name__+' ps, '+Tf.__name__+' rho,'+Tf.__name__+' phi, '+Tc.__name__+' nl, '+Tf.__name__+' dt, '+Tf.__name__+' kdn, '+Tf.__name__+' kup, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
+   ''+Tf.__name__+' out',
+   """
+    if (ka2 > kmax || ka2 == 0 || rho == 0 ) {
+       out = 0.0;
+    } else if (sqrt(ka2) < kup and sqrt(ka2) > kdn) {
+       out = 0.0;
+    } else {
+       out = atan2(imag(ps), real(ps)) + imag(exp(-I*phi)*(-dt*nl/ka2)/rho);
+    }
+   """,
+   'NL_phase_only_force')
+
+# """
 # Going from polar (rho,phi) to complex.
 # """
 polar_2_complex = np.ElementwiseKernel(
