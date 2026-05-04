@@ -16,3 +16,4 @@ Foundation of pseudospectral code is based on a 2D Fortran code written by Pablo
 ### Capabilities: 
 * Ensemble members
 * Triad phase and amplitude statistics
+* Fractal Fourier decimation (only works with `main.py`). See [Frisch et al. Phys. Rev. Lett. 108, 074501 (2012)](https://doi.org/10.1103/PhysRevLett.108.074501) for info on fractal Fourier decimation.
