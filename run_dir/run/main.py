@@ -47,26 +47,66 @@ ka = np.asarray(np.fft.fftfreq(n,d=(1/n)),dtype=Tf) # kx
 ka_half = np.asarray(np.fft.rfftfreq(n,d=(1/n)),dtype=Tf) # ky
 KX,KY = np.meshgrid(ka,ka_half,indexing='ij')
 ka2 = KX**2+KY**2
-# Constant injection count:
-cond = (np.sqrt(ka2)<kup)&(np.sqrt(ka2)>kdn)
-Nf = np.sum(cond)
 # Imaginary matrix
 I = 1j*np.ones((n,n_half),dtype=Tc)
-# For fractional dimension decimation (if dec_dim < 2), we build the projectorb
+# For fractional dimension decimation (if dec_dim < 2), we build the projector
 if dec_dim < 2.0:
-    # First draw a random uniform distribution
-    P_pre = np.asarray(rng.uniform(size=(Nens,n,n_half)),dtype=Tf)
-    # Now apply the condition as a function of k
-    P_frac = np.asarray((P_pre <= np.sqrt(ka2[None,:,:])**(dec_dim-2)),dtype=Tf)
-    # Ensure 'realness' in the ky = 0 axis when projecting
-    P_frac[:,n_half:,0] = np.flip(np.conj(P_frac[:,1:n_half-1,0]),axis=1)
-    P_frac[:,0,0] = P_frac[:,n_half-1,0] = 0.0
+    # Check to see if P_frac file exists:
+    my_file = Path(idir+'/P_frac.npy')
+    if my_file.is_file():
+        print('Loading P_frac array.',flush=True)
+        # Load
+        P_frac = np.load(my_file)[:]
+    # Otherwise create it and save it to file
+    else:
+        print('Building P_frac array from scratch and saving.',flush=True)
+        # First checks to see which 'version' of fractal decimation we are doing. If triad_phase_hist=True, then each ensemble member will have the same P_frac. Else, each ensemble member will have a different one.
+        if triad_phase_hist:
+            # First draw a random uniform distribution (n,n_half)
+            P_pre = np.asarray(rng.uniform(size=(n,n_half)),dtype=Tf)
+            # Now apply the condition as a function of k
+            P_frac = np.asarray((P_pre <= np.sqrt(ka2)**(dec_dim-2)),dtype=Tf)
+            # Finally, copy this Nens times
+            P_frac = np.repeat(P_frac[np.newaxis,:,:], Nens, axis=0)
+        else:
+            # First draw a random uniform distribution (Nens, n,n_half)
+            P_pre = np.asarray(rng.uniform(size=(Nens,n,n_half)),dtype=Tf)
+            # Now apply the condition as a function of k
+            P_frac = np.asarray((P_pre <= np.sqrt(ka2[None,:,:])**(dec_dim-2)),dtype=Tf)
+    
+        # Ensure 'realness' in the ky = 0 axis when projecting
+        P_frac[:,n_half:,0] = np.flip(np.conj(P_frac[:,1:n_half-1,0]),axis=1)
+        P_frac[:,0,0] = P_frac[:,n_half-1,0] = 0.0
+        # Save to file
+        np.save(idir+'/P_frac.npy',P_frac)
+
+# For fractional fourier decimation and random forcing, we have to choose only active modes.
+if iflow==3:
+    # Condition matrix
+    if dec_dim < 2.0:
+        cond_rand_force = ka2[None,:,:]*P_frac
+    else:
+        cond_rand_force = ka2[None,:,:]*np.ones((Nens,n,n_half),dtype=Tf)
+    cond_rand_force = ((cond_rand_force<kup**2)&(cond_rand_force>kdn**2))
+    # Reshape each ensemble as 1D array
+    cond_rand_force = cond_rand_force.reshape(Nens, n*n_half)  # (Nens, P)
+    # Count the number of 'True' values per ensemble
+    counts = cond_rand_force.sum(axis=1)
+    # Cumulative sum increments only at True entries
+    cond_rand_force = np.cumsum(cond_rand_force, axis=1)
+    if np.any(counts<50):
+        raise Exception("ERROR: dec_dim is too low, there are fewer than 50 eligible modes to randomly choose from in the forcing range.")
     
 # For shell integrating
 inds_polar = []
 for ii in range(n_half):
     kk = ii+1
     inds_polar.append(np.where(np.round(np.sqrt(ka2)).astype(Ti)==kk))
+
+# Before doing triad phase statistics, we must also check that triads.txt exists, otherwise we set triad_phase_hist to false
+my_file = Path(idir+'/triads.txt')
+if triad_phase_hist&(~my_file.is_file()):
+    triad_phase_hist=False
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
@@ -325,9 +365,9 @@ if iflow==1:
     E = energy(fp,1,ka2)
     fp *= fp0/np.sqrt(E[:,None,None])
 elif iflow==2:
-    fp = const_inj(ps,ka2,rng,Nf)
+    fp = const_inj(ps,ka2,rng)
 elif iflow==3:
-    fp = rand_force(dt,ka2,ka,ka_half,rng)
+    fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 else:
     sys.exit('ERROR. The variable iflow must be either 1, 2, or 3. Stopping simulation.')
     
@@ -354,7 +394,7 @@ while (time_wall.time() < sim_end)&(t<=step):
 
     # Random force
     if iflow==3:
-        fp = rand_force(dt,ka2,ka,ka_half,rng)
+        fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 
     # Every 'sstep' steps, generates external files with the power spectrum
     if times==sstep:
@@ -409,7 +449,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     for o in range(ord,0,-1):
         # Iflow2: change forcing to keep constant energy
         if iflow==2:
-            fp = const_inj(C3,ka2,rng,Nf)
+            fp = const_inj(C3,ka2,rng)
             
         # Nonlinear term
         nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D

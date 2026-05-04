@@ -24,8 +24,7 @@ kcut = Tf(n/3.0) # float
 ord = 2    # Runge-Kutta order
 kmax = Tf((kcut)**2)  #     kmax: maximum truncation for dealiasing
 tiny =  Tf(0.000001)   #     tiny: minimum truncation for dealiasing
-dec_dim = Tf(1.75)         # Fractional dimension for decimation (dec_dim = 2 does nothing)
-## NOTE: for now only works for iflow = 1!!
+dec_dim = Tf(1.95)         # Fractional dimension for decimation (dec_dim = 2 does nothing)
 
 ############
 ### Time ###
@@ -43,7 +42,7 @@ tstep = 5000000       # Number of steps between field output
 ########################
 ### Fluid parameters ###
 ########################
-fp0 = Tf(16.00)            # streamfunction forcing amplitude
+fp0 = Tf(2.50)            # streamfunction forcing amplitude
 u0 = Tf(0.10)              # streamfunction ic amplitude
 kdn = Tf(35.0)             # lowest forced wavenumber
 kup = Tf(37.0)             # highest forcing wavenumber
@@ -52,9 +51,9 @@ hnu = Tf(0.7937)           # hypoviscosity, 0.5
 nn = Ti(8)                 # order of dissipation 
 mm = Ti(2)                 # order of hypo-dissipation
 seed = 123456              # random seed
-iflow = 1                  # forcing choice (1 = sin(x)*sin(y), 2 = const inj, 3 = random forcing)
+iflow = 3                  # forcing choice (1 = sin(x)*sin(y), 2 = const inj, 3 = random forcing)
 dt_corr = 0.00             # forcing correlation time
-triad_phase_hist = True   # If true, then loads and updates histograms of triad phases
+triad_phase_hist = True    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
 Nbins = 30                 # Sets the number of bins for the PDFs of thetas
 alpha = 1.75                # Initial KE spectrum (from largest scale to kup) is KE(k) = k**(-alpha), with integrated, total KE = u0. 
 beta = 1.75                 # Initial KE spectrum (from kup to smallest scales) is KE(k) = k**(-beta), with integrated, total KE = u0. ONLY USED IN PHASE ONLY VERSION

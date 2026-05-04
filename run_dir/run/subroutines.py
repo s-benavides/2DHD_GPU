@@ -81,20 +81,6 @@ dealias = np.ElementwiseKernel(
     'dealias')
 
 # """
-# No-phase forcing
-# """
-no_phase = np.ElementwiseKernel(
-    ''+Tc.__name__+' a, '+Tf.__name__+' ka2, '+Tf.__name__+' kup, '+Tf.__name__+' kdn',
-    ''+Tc.__name__+' b',
-    '''
-    if (sqrt(ka2) > kup || sqrt(ka2) < kdn || abs(a)==0) {
-       b = 0;
-    } else {
-       b = 1.0/(ka2*conj(a));
-    }
-    ''',
-    'no_phase')
-# """
 # Filter
 # """
 kfilt = np.ElementwiseKernel(
@@ -140,23 +126,6 @@ NL_phase_only = np.ElementwiseKernel(
     }
    """,
    'NL_phase_only')
-
-# """
-# Nonlinear term, only evolves the phases phi, but fixes phases in a range of scales based on kdn and kup
-# """
-NL_phase_only_force = np.ElementwiseKernel(
-   ''+Tc.__name__+' ps, '+Tf.__name__+' rho,'+Tf.__name__+' phi, '+Tc.__name__+' nl, '+Tf.__name__+' dt, '+Tf.__name__+' kdn, '+Tf.__name__+' kup, '+Tf.__name__+' ka2, '+Tf.__name__+' kmax, '+Tc.__name__+' I',
-   ''+Tf.__name__+' out',
-   """
-    if (ka2 > kmax || ka2 == 0 || rho == 0 ) {
-       out = 0.0;
-    } else if (sqrt(ka2) < kup and sqrt(ka2) > kdn) {
-       out = 0.0;
-    } else {
-       out = atan2(imag(ps), real(ps)) + imag(exp(-I*phi)*(-dt*nl/ka2)/rho);
-    }
-   """,
-   'NL_phase_only_force')
 
 # """
 # Going from polar (rho,phi) to complex.
@@ -342,7 +311,7 @@ def CFL_condition(ps,KX,KY,I):
     
     return dt
 
-def const_inj(ps,ka2,rng,Nf):
+def const_inj(ps,ka2,rng):
     """
     This subroutine assures that we inject constant energy.
     It is called when iflow == 2
@@ -355,43 +324,78 @@ def const_inj(ps,ka2,rng,Nf):
     RETURNS
      fp : forcing function
     """
-    # fp = np.zeros(ps.shape,dtype=Tc)
-    # cond = (ka2[:,:]<=kup**2)&(ka2[:,:]>=kdn**2)
-    # # cond = (ka2[None,:,:]<=kup**2)&(ka2[None,:,:]>=kdn**2)&(np.abs(ps)>0)
-    
-    # # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
-    # fp[:,cond]=ps[:,cond]/(np.abs(ps[:,cond])+1.0)
+    fp = np.zeros(ps.shape,dtype=Tc)
+    cond = (ka2<=kup**2)&(ka2>=kdn**2)
+    # Make operations passing [cond] instead of multiplyin by (cond) because the condition chooses very few modes, and hence the operation is faster in this case since it has to only multiply a few numbers of modes.
+    fp[:,cond]=ps[:,cond]/(np.abs(ps[:,cond])+1.0)
+    # Ensure 'realness' in the ky = 0 axis:
+    fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
+    fp[:,0,0] = fp[:,n_half-1,0] = 0.0
 
-    # # Rescale
-    # E = inerprod(ps,fp,1,ka2)
-    # # Random number
-    # tmp = rng.uniform(low=-1,high=1,size=ps.shape)
-    # tmp = np.asarray(tmp,dtype=Tf)*np.sqrt(ka2[None,:,:])
+    # Rescale
+    E = inerprod(ps,fp,1,ka2)
+    # Random number
+    tmp = rng.uniform(low=-1,high=1,size=ps.shape)
+    tmp = np.asarray(tmp,dtype=Tf)*np.sqrt(ka2[None,:,:])
 
-    # fp *= fp0/E[:,None,None]
-    # fp[:,cond] += 1j*(tmp*ps)[:,cond]
-    
-    # # Ensure 'realness' in the ky = 0 axis:
-    # fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
-    # fp[:,0,0] = fp[:,n_half-1,0] = 0.0
-
-    # Xiao 2009 or no-phase forcing
-    fp = no_phase(ps,ka2[None,:,:],kup,kdn)
-    
+    fp *= fp0/E[:,None,None]
+    fp[:,cond] += 1j*(tmp*ps)[:,cond]
     # Ensure 'realness' in the ky = 0 axis:
     fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
     fp[:,0,0] = fp[:,n_half-1,0] = 0.0
     
-    # Rescale for constant energy injection rate
-    # E = inerprod(ps,fp,1,ka2)
-    # fp *= fp0/E[:,None,None]
-    fp *= n**4*fp0/Nf/2
-
     return fp
 
-def rand_force(dt,ka2,ka,ka_half,rng):
+# def rand_force(dt,ka2,ka,ka_half,rng):
+#     """
+#     This subroutine creates random forcing.
+#     It is called when iflow == 3.
+#     Based on forcing described in Chan et al. Phys. Rev. E 85, 036315 (2012) 
+
+#     ARGUMENTS
+#      dt : time step
+#      ka2: the square of the wave vector
+#      ka : wavenumbers
+#      ka_half: half wavenumbers
+#      rng: random numbers
+
+#     RETURNS
+#      fp : forcing function
+#     """
+#     ## Choose random vector of length kup and a random phase
+#     # theta = np.arctan(ky/kx), theta between 0 and pi. Choosing this range so that ky > 0, which is the case for the rfftn in numpy/cupy.
+#     theta = rng.uniform(low=0,high=numpy.pi,size=Nens)
+#     # Complex phase of mode. Between -pi and pi.
+#     phase = rng.uniform(low=-numpy.pi,high=numpy.pi,size=Nens)
+#     # kx
+#     kx = numpy.floor(kup*numpy.cos(theta)).astype(numpy.int16)
+#     # ky 
+#     ky = numpy.floor(kup*numpy.sin(theta)).astype(numpy.int16)
+
+#     # Define norm
+#     norm = numpy.power(n,2)*numpy.sqrt(fp0/dt)
+
+#     # Transfer to device
+#     phase = np.asarray(phase,dtype=Tf)
+#     kx = np.asarray(kx,dtype=Ti)
+#     ky = np.asarray(ky,dtype=Ti)
+
+#     # Build fp
+#     fp = np.zeros((Nens,n,n_half),dtype=Tc)
+#     indx=np.zeros(Nens,dtype=Ti)
+#     indx[kx>=0] = kx[kx>=0]
+#     indx[kx<0] = n+kx[kx<0]
+#     fp[np.arange(Nens),indx,ky] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[None,indx,ky])
+#     # Ensure 'realness' in the ky = 0 axis, but make sure not to remove the only mode that is nonzero.
+#     fp[ky==0,n-indx[ky==0],0]=np.conj(fp[ky==0,indx[ky==0],0])
+#     fp[:,0,0] = fp[:,n_half-1,0] = 0.0
+
+#     return fp
+
+def rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts):
     """
-    This subroutine creates random forcing.
+    This subroutine creates random forcing in the case when fractal Fourier decimation is implemented (dec_dim < 2).
+    In this version, we are careful to choose forcing wavenumbers which are not zeroed out by the projection P_frac.
     It is called when iflow == 3.
     Based on forcing described in Chan et al. Phys. Rev. E 85, 036315 (2012) 
 
@@ -401,36 +405,36 @@ def rand_force(dt,ka2,ka,ka_half,rng):
      ka : wavenumbers
      ka_half: half wavenumbers
      rng: random numbers
+     cond_rand_force: cumulative sum of increments at True entries, based on conditions (k2<kup**2)&(k2>kdn**2) and P_frac projection.
+     counts: Number of possible wavenumber pairs (kx,ky) that are valid.
 
     RETURNS
      fp : forcing function
     """
-    ## Choose random vector of length kup and a random phase
-    # theta = np.arctan(ky/kx), theta between 0 and pi. Choosing this range so that ky > 0, which is the case for the rfftn in numpy/cupy.
-    theta = rng.uniform(low=0,high=numpy.pi,size=Nens)
+    # Select a wavenumber pair for each ensemble (by multiplying counts by a random value (0,1) and rounding to the nearest int)
+    r = np.asarray(rng.random(Nens),dtype=Tf)
+    r = (r * counts).astype(Ti)
     # Complex phase of mode. Between -pi and pi.
-    phase = rng.uniform(low=-numpy.pi,high=numpy.pi,size=Nens)
-    # kx
-    kx = numpy.floor(kup*numpy.cos(theta)).astype(numpy.int16)
-    # ky 
-    ky = numpy.floor(kup*numpy.sin(theta)).astype(numpy.int16)
+    phase = np.asarray(rng.uniform(low=-numpy.pi,high=numpy.pi,size=Nens),dtype=Tf)
+    
+    # Now look for where this is by doing a cumsum of the condition matrix ( = cond_rand_force)
+    target = r + 1  # 1-based target for cumsum (if we want position 0, we are looking for the first 'True', which will give a +1 in the cumsum)
+    # Finding all of the entries which have target (between target and the next True value) then lets us choose when True happens
+    equal_mask = (cond_rand_force == target[:, None])
+    # Position of the chosen True within each flattened row
+    pos = equal_mask.argmax(axis=1)
+    # Convert flat index to 2D (i, j)
+    i = pos // n_half
+    j = pos % n_half
 
     # Define norm
     norm = numpy.power(n,2)*numpy.sqrt(fp0/dt)
 
-    # Transfer to device
-    phase = np.asarray(phase,dtype=Tf)
-    kx = np.asarray(kx,dtype=Ti)
-    ky = np.asarray(ky,dtype=Ti)
-
     # Build fp
     fp = np.zeros((Nens,n,n_half),dtype=Tc)
-    indx=np.zeros(Nens,dtype=Ti)
-    indx[kx>=0] = kx[kx>=0]
-    indx[kx<0] = n+kx[kx<0]
-    fp[np.arange(Nens),indx,ky] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[None,indx,ky])
-    # Ensure 'realness' in the ky = 0 axis, but make sure not to remove the only mode that is nonzero.
-    fp[ky==0,n-indx[ky==0],0]=np.conj(fp[ky==0,indx[ky==0],0])
+    fp[np.arange(Nens),i,j] = norm*(np.cos(phase)+1j*np.sin(phase))/np.sqrt(ka2[None,i,j])
+    # Ensure 'realness' in the ky = 0 axis:
+    fp[:,n_half:,0] = np.flip(np.conj(fp[:,1:n_half-1,0]),axis=1)
     fp[:,0,0] = fp[:,n_half-1,0] = 0.0
 
     return fp
