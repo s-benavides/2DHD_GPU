@@ -6,6 +6,7 @@ import cupy as np
 ###########################
 #Tf = np.float32
 #Tc = np.complex64
+#Ti = np.int32
 Tf = np.float64
 Tc = np.complex128
 Ti = np.int64
@@ -29,7 +30,7 @@ tiny =  Tf(0.000001)   #     tiny: minimum truncation for dealiasing
 ### Time ###
 ############
 cfl = Tf(0.5) # CFL safety factor
-cfl_cad = 4           # Number of time steps before cfl is changed (saves some time).
+cfl_cad = 10           # Number of time steps before cfl is changed (saves some time).
 H = np.inf            # Number of wall-hours to run for.
 step =  np.inf        # Numer of steps in run   
 cstep = 1000          # Number of steps between time series output
