@@ -78,12 +78,12 @@ if triad_phase_hist:
     
     # Compute index arrays, indKX,indKY,indPX, etc. X arrays have shape (Ntriads,n), Y arrays have shape (n,Ntriads)
     # To be used in thetauuu_calc
-    indKX = np.zeros((Ntriads,n),dtype=Ti)
-    indKY = np.zeros((n_half,Ntriads),dtype=Ti)
-    indPX = np.zeros((Ntriads,n),dtype=Ti)
-    indPY = np.zeros((n_half,Ntriads),dtype=Ti)
-    indQX = np.zeros((Ntriads,n),dtype=Ti)
-    indQY = np.zeros((n_half,Ntriads),dtype=Ti)
+    indKX = np.zeros((Ntriads,n),dtype=Tf)
+    indKY = np.zeros((n_half,Ntriads),dtype=Tf)
+    indPX = np.zeros((Ntriads,n),dtype=Tf)
+    indPY = np.zeros((n_half,Ntriads),dtype=Tf)
+    indQX = np.zeros((Ntriads,n),dtype=Tf)
+    indQY = np.zeros((n_half,Ntriads),dtype=Tf)
     kmag = np.zeros((Ntriads),dtype=Tf)
     pmag = np.zeros((Ntriads),dtype=Tf)
     qmag = np.zeros((Ntriads),dtype=Tf)
