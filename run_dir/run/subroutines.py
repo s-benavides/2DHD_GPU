@@ -309,7 +309,7 @@ def CFL_condition(ps,KX,KY,I):
     
     dt = cfl / (kcut*max_vel + nu*kcut**(2*nn))
     
-    return dt
+    return np.asarray(dt,dtype=Tf)
 
 def const_inj(ps,ka2,rng):
     """
@@ -543,7 +543,7 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
     RETURNS
      Nothing. Saves to 'transfer.XXXX.txt' and 'fluxes.XXXX.txt'.
     """
-    two = np.ones((n_half))
+    two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
     tmp = 1/n**4
 
