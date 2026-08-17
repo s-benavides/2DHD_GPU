@@ -307,7 +307,15 @@ if iflow==1:
 elif iflow==2:
     fp = const_inj(ps,ka2,rng)
 elif iflow==3:
-    fp = rand_force(dt,ka2,ka,ka_half,rng)
+    cond_rand_force = ka2[None,:,:]*np.ones((Nens,n,n_half),dtype=Tf)
+    cond_rand_force = ((cond_rand_force<kup**2)&(cond_rand_force>kdn**2))
+    # Reshape each ensemble as 1D array
+    cond_rand_force = cond_rand_force.reshape(Nens, n*n_half)  # (Nens, P)
+    # Count the number of 'True' values per ensemble
+    counts = cond_rand_force.sum(axis=1)
+    # Cumulative sum increments only at True entries
+    cond_rand_force = np.cumsum(cond_rand_force, axis=1)
+    fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 else:
     sys.exit('ERROR. The variable iflow must be either 1, 2, or 3. Stopping simulation.')
     
@@ -334,7 +342,7 @@ while (time_wall.time() < sim_end)&(t<=step):
 
     # Random force
     if iflow==3:
-        fp = rand_force(dt,ka2,ka,ka_half,rng)
+        fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 
     # Every 'sstep' steps, generates external files with the power spectrum
     if times==sstep:
