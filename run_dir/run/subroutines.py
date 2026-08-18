@@ -589,7 +589,7 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
         
     return
 
-def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag):
+def thetauuu_calc(ps,i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag,triad_pair_list):
     """
     Updates the histogram for theta and scriptK, as well as updates the count for the averaging. 
 
@@ -598,6 +598,7 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,ind
      triads : list of triads loaded at beginning of simulation
      i_count : count for statistics
      thetauuu : the PDF of the triad phases
+     thetauuu_joint : the joint PDF of the triad phase pairs [REQUIRES 'triad_pairs_list.txt' in /ins/ folder]
      scriptK : the average value and variance of the K coefficient
      rhok : the average value and variance of rhok
      rhop : the average value and variance of rhop
@@ -606,9 +607,10 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,ind
      Tkpq : the average value and variance of rhok*rhop*rhoq*cos(theta)
      ind*: array used to isolate triads through dot products (to avoid for-loops).
      *mag: magnitudes of triads
+     triad_pair_list : list of triad pairs (neighboring triads), taken from 'triad_pairs_list.txt'.
     
     RETURNS
-     [i_count, thetauuu, scriptK]
+     [i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq]
     """    
     Ntriads = indKX.shape[0]
     
@@ -631,24 +633,63 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,ind
     phips = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indPX, phis),indPY)
     phiqs = np.einsum('lik,ki->li',np.einsum('ij,ljk->lik', indQX, phis),indQY)
     
-    ####### thetauuu
+    ####### thetauuu histograms
     ## Define thetauuu
     thetas = phiks+phips+phiqs
     thetas = thetas - 2*np.pi*np.round(thetas/np.pi/2) # From [-pi,pi]
-    # Remove thetas where one or more rhos == 0.
-    valid_indices_ens, valid_indices_tri = np.where(np.abs(rhoks*rhoqs*rhops)>0)
-    thetas_valid = thetas[valid_indices_ens,valid_indices_tri]
-    # Find which 'bin' of the theta pdf it should go into and add one to the histogram
+    # For removing thetas where one or more rhos == 0.
+    valid = np.abs(rhoks*rhoqs*rhops)>0
+    _,valid_indices_tri = np.where(valid) # shape = Nens*Ntriads - N_removed
     # Shift thetas to the [0, 2pi) range
-    shifted_thetas = (thetas_valid + np.pi) % (2 * np.pi)
+    shifted_thetas = (thetas + np.pi) % (2 * np.pi)
+    # Find which 'bin' of the theta pdf it should go into and add one to the histogram
     # Compute bin indices
-    bin_indices = np.floor(shifted_thetas / dtheta).astype(int)
-    # Combine bin + triad index into 1D index
-    flat_idx = bin_indices * Ntriads + valid_indices_tri
+    bin_indices = np.floor(shifted_thetas / dtheta).astype(Ti) # shape = (Nens,Ntriads)
+
+    ### 1D histograms
+    ## Convert (Nbins,Ntriads) to one index
+    # bincounting bin_indices would sum up all of the triads together into one PDF. 
+    # We want to isolate different triads, but sum up triads that are the same over different ensemble members.
+    # So if bin_index and valid_indices_tri are the same, we want them to be added to the same bin. However, we want to avoid 
+    # the possibility of bin_index + valid_indices_tri being equal for different combinations of bin_index and 
+    # valid_indices_tri. Therefore, we multiply bin_index by Ntriads. Note: values are spanned by 0 bin index + triad 0 
+    # = flat_idx 0 to index 29 + triad Ntriad = 30*Ntriad = Nbin*Ntriad. Each bin in each triad has a unique ID.
+    flat_idx = bin_indices[valid] * Ntriads + valid_indices_tri
     # Count with bincount (1D)
     counts = np.bincount(flat_idx, minlength=Nbins * Ntriads)
     # Reshape to (Nbins, Ntriads) and add to thetauuu
     thetauuu += counts.reshape((Nbins, Ntriads))
+
+    ### Joint histograms
+    if not np.any(np.isnan(triad_pair_list)):
+        Npairs = triad_pair_list.shape[0]
+
+        # Triad indices for each pair (shape = (Npairs))
+        triad1 = triad_pair_list[:, 0]
+        triad2 = triad_pair_list[:, 1]
+        
+        # Bin index for each pair (shape = (Nens,Npairs))
+        bin1 = bin_indices[:, triad1]
+        bin2 = bin_indices[:, triad2]
+        
+        # A pair is valid only if BOTH triads are valid (shape = (Nens,Npairs))
+        valid_pairs = valid[:, triad1] & valid[:, triad2]
+        
+        # Keep only valid pair contributions. (flattens, shape = (Nens*Npairs-Npairs_removed))
+        bin1 = bin1[valid_pairs]
+        bin2 = bin2[valid_pairs]
+        
+        # Flatten valid_pairs
+        _,valid_pair_inds = np.where(valid_pairs) # shape = Nens*Npairs-Npairs_removed
+        
+        ## Convert (Nbins,Nbins,Ntriads) to one index
+        flat_idx = (bin1*Nbins+bin2)*Npairs+valid_pair_inds
+        
+        # Histogram all three dimensions simultaneously
+        counts = np.bincount(flat_idx,minlength=Nbins * Nbins * Npairs)
+        
+        # Reshape back to (Nbins, Nbins, Npairs)
+        thetauuu_joint += counts.reshape(Nbins, Nbins, Npairs)
     
     ####### ScriptK average
     scriptK_tmp = scriptK_calc(kmag[None,:],pmag[None,:],qmag[None,:],rhoks,rhops,rhoqs)
@@ -703,7 +744,7 @@ def thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,ind
     Rkpq[0,:] = Rkpq_avg_tmp
     Tkpq[0,:] = Tkpq_avg_tmp
 
-    return i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq
+    return i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq
 
 # def corr_check(ps,time,ka2,KX,KY,I,indKX_ts,indKY_ts,indPX_ts,indPY_ts,indQX_ts,indQY_ts,kmag_ts,pmag_ts,qmag_ts,qxp_ts):
 #     """

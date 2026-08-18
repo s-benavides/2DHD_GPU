@@ -1,7 +1,7 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [4] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+GPU_IDs = [1] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
 IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
 os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
@@ -59,6 +59,22 @@ if triad_phase_hist:
     Ntriads = triads.shape[0]
     print("Gathering histogram statistics for %s triads." % Ntriads, flush = True)
 
+    # Check to see if triad_pair_list.txt file exists:
+    my_file = Path(idir+'/triad_pair_list.txt')
+    triad_pairs = my_file.is_file()
+    if triad_pairs:
+        # Loads info on triad pairs for joint histogram
+        triad_pair_list = np.loadtxt(idir+'/triad_pair_list.txt',dtype=Ti)
+        Npairs= triad_pair_list.shape[0]
+        print("Gathering joint histogram statistics for %s triad pairs." % Npairs, flush = True)
+        # Define joint histogram
+        thetauuu_joint = np.zeros((Nbins,Nbins,Npairs),dtype=Ti)
+    else:
+        # Create empty thetauuu_joint because thetauuu_calc will output that anyways
+        triad_pair_list = np.nan
+        Npairs = np.nan
+        thetauuu_joint = np.zeros((1,1,1),dtype=Ti)
+    
     # Define histogram
     thetauuu = np.zeros((Nbins,Ntriads),dtype=Ti)
     # Define scriptK and other averaged quantities
@@ -244,6 +260,13 @@ else:
             # Load
             thetauuu[:] = np.load(my_file)[:]
 
+        if triad_pairs:
+            # Check to see if thetauuu_joint file exists:
+            my_file = Path(odir+'/thetauuu_joint.npy')
+            if my_file.is_file():
+                # Load
+                thetauuu_joint[:] = np.load(my_file)[:]
+        
         # Check to see if scriptK file exists:
         my_file = Path(odir+'/scriptK.npy')
         if my_file.is_file():
@@ -320,7 +343,7 @@ while (time_wall.time() < sim_end)&(t<=step):
     if ((timeth==thstep)&(triad_phase_hist)): 
         timeth = 0
         # Updates thetauuu
-        i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq = thetauuu_calc(ps,i_count,thetauuu,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag)
+        i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq = thetauuu_calc(ps,i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag,triad_pair_list)
         
         
     # if ((timethts==thtsstep)&(triad_phase_hist)):
@@ -342,6 +365,8 @@ while (time_wall.time() < sim_end)&(t<=step):
         # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates average files.
         if triad_phase_hist:
             np.save(odir+'/thetauuu.npy',thetauuu)
+            if triad_pairs:
+                np.save(odir+'/thetauuu_joint.npy',thetauuu_joint)
             np.save(odir+'/scriptK.npy',scriptK)
             np.save(odir+'/rhok.npy',rhok)
             np.save(odir+'/rhop.npy',rhop)
@@ -366,8 +391,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         nl = poisson(C1,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
         
         tmp1 = dt/float(o)
-        phi = NL_phase_only_force(ps,rho,phi,nl,tmp1,kdn,kup,ka2[None,:,:],kmax,I[None,:,:])
-        # phi = NL_phase_only(ps,rho,phi,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
+        phi = NL_phase_only(ps,rho,phi,nl,tmp1,ka2[None,:,:],kmax,I[None,:,:])
         
     ######## Runge-Kutta step 3
     ps = polar_2_complex(rho,phi,I[None,:,:])
@@ -398,6 +422,8 @@ np.save(odir+'/ww.'+f'{int(stat):03}'+'.npy',R1)
 # If traid_phase_hist, then overwrites the current thetauuu histogram file. Updates average files.
 if triad_phase_hist:
     np.save(odir+'/thetauuu.npy',thetauuu)
+    if triad_pairs:
+        np.save(odir+'/thetauuu_joint.npy',thetauuu_joint)
     np.save(odir+'/scriptK.npy',scriptK)
     np.save(odir+'/rhok.npy',rhok)
     np.save(odir+'/rhop.npy',rhop)
