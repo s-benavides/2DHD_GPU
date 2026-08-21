@@ -1,9 +1,10 @@
 # BEFORE importing cupy 
 import os
 
-GPU_IDs = [4] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
-IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
-os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
+## In case one needs to choose among multiple GPUs available
+#GPU_IDs = [0] # IDs of GPUs that are available (cross-check with gpustat in a terminal)
+#IDs_txt = ",".join(map(str, GPU_IDs)) # "ID[0],ID[1],ID[2],..."
+#os.environ["CUDA_VISIBLE_DEVICES"] = IDs_txt # Only these GPUS will be seen by the program after this line 
 
 import numpy 
 import cupy as np
