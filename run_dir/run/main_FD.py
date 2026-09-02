@@ -81,22 +81,6 @@ if dec_dim < 2.0:
         # Save to file
         np.save(idir+'/P_frac.npy',P_frac)
 
-# For fractional fourier decimation and random forcing, we have to choose only active modes.
-if iflow==3:
-    # Condition matrix
-    if dec_dim < 2.0:
-        cond_rand_force = ka2[None,:,:]*P_frac
-    else:
-        cond_rand_force = ka2[None,:,:]*np.ones((Nens,n,n_half),dtype=Tf)
-    cond_rand_force = ((cond_rand_force<kup**2)&(cond_rand_force>kdn**2))
-    # Reshape each ensemble as 1D array
-    cond_rand_force = cond_rand_force.reshape(Nens, n*n_half)  # (Nens, P)
-    # Count the number of 'True' values per ensemble
-    counts = cond_rand_force.sum(axis=1)
-    # Cumulative sum increments only at True entries
-    cond_rand_force = np.cumsum(cond_rand_force, axis=1)
-    if np.any(counts<50):
-        raise Exception("ERROR: dec_dim is too low, there are fewer than 50 eligible modes to randomly choose from in the forcing range.")
     
 # For shell integrating
 inds_polar = []
@@ -391,6 +375,21 @@ if iflow==1:
 elif iflow==2:
     fp = const_inj(ps,ka2,rng)
 elif iflow==3:
+    # For fractional fourier decimation and random forcing, we have to choose only active modes.
+    # Condition matrix
+    if dec_dim < 2.0:
+        cond_rand_force = ka2[None,:,:]*P_frac
+    else:
+        cond_rand_force = ka2[None,:,:]*np.ones((Nens,n,n_half),dtype=Tf)
+    cond_rand_force = ((cond_rand_force<kup**2)&(cond_rand_force>kdn**2))
+    # Reshape each ensemble as 1D array
+    cond_rand_force = cond_rand_force.reshape(Nens, n*n_half)  # (Nens, P)
+    # Count the number of 'True' values per ensemble
+    counts = cond_rand_force.sum(axis=1)
+    # Cumulative sum increments only at True entries
+    cond_rand_force = np.cumsum(cond_rand_force, axis=1)
+    if np.any(counts<50):
+        raise Exception("ERROR: dec_dim is too low, there are fewer than 50 eligible modes to randomly choose from in the forcing range.")
     fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 else:
     sys.exit('ERROR. The variable iflow must be either 1, 2, or 3. Stopping simulation.')
