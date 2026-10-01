@@ -54,9 +54,15 @@ mm = Ti(2)                 # order of hypo-dissipation
 seed = 123456              # random seed
 iflow = 3                  # forcing choice (1 = sin(x)*sin(y), 2 = const inj, 3 = random forcing)
 dt_corr = 0.00             # forcing correlation time
-triad_phase_hist = True    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
-Nbins = 30                 # Sets the number of bins for the PDFs of thetas
 alpha = 1.75                # Initial KE spectrum (from largest scale to kup) is KE(k) = k**(-alpha), with integrated, total KE = u0. 
 beta = 1.75                 # Initial KE spectrum (from kup to smallest scales) is KE(k) = k**(-beta), with integrated, total KE = u0. ONLY USED IN PHASE ONLY VERSION
+
+################
+### Analysis ###
+################
+triad_phase_hist = True    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
+Nbins = 30                 # Sets the number of bins for the PDFs of thetas
+shell_transf=False    # Set to True if you want shell-to-shell energy transfers to be measured
+Klist = np.arange(6,kdn,8,dtype=Ti) # Build list of 'receiver' modes (if Klist=None, all shells will be computed)
 idir = '../ins'
 odir = '../outs'

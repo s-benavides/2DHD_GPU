@@ -589,6 +589,135 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
         
     return
 
+def shell_index(ka2,nshell=None,binning='round'):
+    """
+    Precomputes shell membership, in the same spirit as inds_polar in main.py.
+
+    binning='round' (default) reproduces exactly the bins transfers() uses.
+    Bin ii holds the modes with round(|k|) == ii+1, and bin 0 additionally
+    absorbs the round(|k|) == 0 modes, matching the 'Count zero as first bin'
+    lines in transfers(). So bin ii here IS row ii of transfer.XXXX.txt, and
+    column 1 of that file (en_tran; column 0 is enst_tran) is directly
+    comparable to sum_Q T[ii,Q] -- see the note in shell_transfer. Modes with
+    round(|k|) > nshell fall in no bin, exactly as they do in transfers();
+    they are all beyond the dealiasing cutoff and therefore zero.
+
+    binning='floor' is GHOST's own convention, K <= |k| < K+1, which is what
+    Alexakis & Mininni use. Pick this one if you are comparing against
+    published shell-to-shell figures rather than against your own transfers()
+    output. The two put a given mode in different shells, so do not mix them.
+
+    ARGUMENTS
+     ka2    : the square of the wave vector
+     nshell : number of shells. Defaults to n_half for 'round' (so the bins
+              line up with transfer.XXXX.txt row for row) and to ceil(kcut)
+              for 'floor'.
+     binning: 'round' or 'floor'
+
+    RETURNS
+     [shell_ind, inds_shell]: the shell index of every mode, and a list of the
+     mode indices belonging to each shell.
+    """
+    if binning=='round':
+        if nshell is None:
+            nshell = n_half
+        kr = np.round(np.sqrt(ka2)).astype(Ti)
+        shell_ind = kr-1
+        shell_ind[kr==0] = 0 # fold the k~0 modes into the first bin, as transfers() does
+    elif binning=='floor':
+        if nshell is None:
+            nshell = int(numpy.ceil(float(kcut)))
+        shell_ind = np.floor(np.sqrt(ka2)).astype(Ti)
+    else:
+        raise ValueError("binning must be 'round' or 'floor'")
+
+    inds_shell = []
+    for K in range(nshell):
+        inds_shell.append(np.where(shell_ind==K))
+    return shell_ind,inds_shell
+
+def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
+    """
+    Computes the shell-to-shell kinetic energy transfer
+
+        T(K,Q) = - < u_K . (u.grad) u_Q >
+
+    the kinetic energy transferred INTO the shell K FROM the shell Q, where
+    u_K is the velocity filtered to K <= |k| < K+1 and <.> is the average over
+    the box. T(K,Q) > 0 means energy flows from Q into K. 
+    
+    ARGUMENTS
+     ps  : streamfunction
+     dump: output number
+     ka2 : the square of the wave vector
+     KX  : wave-vector kx
+     KY  : wave-vector ky
+     I   : Imaginary matrix.
+     shell_ind, inds_shell: output of shell_index
+     Klist: receiving shells to compute. Defaults to all of them.
+
+    RETURNS
+     Nothing. Saves to 'shelltrans.XXXX.txt', a len(Klist) x nshell matrix
+     whose row is a shell K from Klist and whose column Q is the transfer into
+     K from Q. The K values are written in a comment on the first line, which
+     numpy.loadtxt skips.
+    """
+    nshell = len(inds_shell)
+    if Klist is None:
+        Klist = range(nshell)
+    Klist = [int(K) for K in Klist]
+
+    two = np.ones((n_half),dtype=Tf)
+    two[1:] *= 2
+    tmp = 1/n**4
+
+    # Velocity, u = (dpsi/dy,-dpsi/dx), in spectral and in real space
+    ux = derivk2(KY[None,:,:],ps,I[None,:,:])
+    uy = -derivk2(KX[None,:,:],ps,I[None,:,:])
+    ux_R = np.fft.irfftn(ux,axes=(1,2))
+    uy_R = np.fft.irfftn(uy,axes=(1,2))
+
+    T = np.zeros((Nens,len(Klist),nshell),dtype=Tf)
+
+    for iK,K in enumerate(Klist):
+        # Velocity filtered to the shell K
+        cond = (shell_ind==K)
+        uxK = ux*cond[None,:,:]
+        uyK = uy*cond[None,:,:]
+
+        # Its four derivatives, in real space
+        dxx = np.fft.irfftn(derivk2(KX[None,:,:],uxK,I[None,:,:]),axes=(1,2))
+        dxy = np.fft.irfftn(derivk2(KY[None,:,:],uxK,I[None,:,:]),axes=(1,2))
+        dyx = np.fft.irfftn(derivk2(KX[None,:,:],uyK,I[None,:,:]),axes=(1,2))
+        dyy = np.fft.irfftn(derivk2(KY[None,:,:],uyK,I[None,:,:]),axes=(1,2))
+
+        # Advection of the filtered field, (u.grad)u_K, back to spectral space
+        Gx = np.fft.rfftn(quad_plus(ux_R,dxx,uy_R,dxy),axes=(1,2))
+        Gy = np.fft.rfftn(quad_plus(ux_R,dyx,uy_R,dyy),axes=(1,2))
+
+        # Contribution of each mode to < u_Q . (u.grad)u_K >. Summing this over
+        # the modes of a shell Q is the same as filtering u to that shell first.
+        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:]) \
+                  + en_tran_calc(uy,Gy,two[None,None,:])
+        trans_tmp *= tmp
+
+        # Shell summing. 
+        for Q in range(nshell):
+            rows, cols = inds_shell[Q]
+            T[:,iK,Q] = trans_tmp[:,rows,cols].sum(axis=1)
+
+    # Ensemble average
+    T = np.mean(T,axis=0)
+
+    # Writes to file
+    with open(odir+'/shelltrans.'+f'{int(dump):04}'+'.txt', 'w') as f:
+        f.write("# K = "+" ".join(str(K) for K in Klist)+"\n")
+        for iK in range(len(Klist)):
+            f.write(" ".join(f"{T[iK,Q]:24.15E}" for Q in range(nshell))+"\n")
+
+    return
+
+
 def thetauuu_calc(ps,i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag,triad_pair_list):
     """
     Updates the histogram for theta and scriptK, as well as updates the count for the averaging. 

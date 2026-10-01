@@ -55,6 +55,8 @@ inds_polar = []
 for ii in range(n_half):
     kk = ii+1
     inds_polar.append(np.where(np.round(np.sqrt(ka2)).astype(Ti)==kk))
+# For shell-to-shell transfers
+shell_ind,inds_shell = shell_index(ka2)
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
@@ -374,6 +376,8 @@ while (time_wall.time() < sim_end)&(t<=step):
         dump += 1 # Update spectrum count
         spectrum(ps,dump,ka2)
         transfers(ps,dump,ka2,KX,KY,I,inds_polar)
+        if shell_transf:
+            shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=Klist)
         with open('./time_spec.txt', 'a') as f:
             f.write(f"{int(dump):04} {time:14.6F}\n")
 
