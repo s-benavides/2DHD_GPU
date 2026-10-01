@@ -704,7 +704,7 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
         # Shell summing. 
         for Q in range(nshell):
             rows, cols = inds_shell[Q]
-            T[:,iK,Q] = trans_tmp[:,rows,cols].sum(axis=1)
+            T[:,iK,Q] = -trans_tmp[:,rows,cols].sum(axis=1)
 
     # Ensemble average
     T = np.mean(T,axis=0)
