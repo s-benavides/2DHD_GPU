@@ -60,9 +60,9 @@ beta = 1.75                 # Initial KE spectrum (from kup to smallest scales) 
 ################
 ### Analysis ###
 ################
-triad_phase_hist = True    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
+triad_phase_hist = False    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
 Nbins = 30                 # Sets the number of bins for the PDFs of thetas
 shell_transf=False    # Set to True if you want shell-to-shell energy transfers to be measured
-Klist = np.arange(6,kdn,8,dtype=Ti) # Build list of 'receiver' modes (if Klist=None, all shells will be computed)
+Klist = np.logspace(np.log10(6),np.log10(kdn),12,dtype=Ti) # Build list of 'receiver' modes (if Klist=None, all shells will be computed)
 idir = '../ins'
 odir = '../outs'
