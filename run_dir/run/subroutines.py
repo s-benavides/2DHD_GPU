@@ -477,6 +477,27 @@ def cond_check(ps,fp,time,ka2):
     # Energy at forcing scale
     en_kf = energy(kfilt(ps,ka2[None,:,:],kup**2,2.01*kup**2),1,ka2)
 
+    ### Compute kurtosis!
+    # Compute vorticity:
+    # Pad the vorticity (preparing for quartic product)
+    n_pad = int(np.ceil(n * 5 / 3 / 2)) * 2
+    n_half_pad = n_pad//2+1
+    # Padded array
+    C3 = np.zeros((Nens,n_pad,n_half_pad),dtype=Tc)
+    ky_start = (n_pad-n)//2 
+    # Fill in with shifted \hat{vorticity}
+    C3[:,ky_start:ky_start+n,:n_half] = np.fft.fftshift(-laplak2(ps,ka2[None,:,:]),axes=1)[:,:] # -laplak(ps) computes vorticity (saving memory)
+    C3 = np.fft.ifftshift(C3,axes=1)
+    # inverse FFT
+    R1 = np.fft.irfftn(C3,axes=(1,2))
+    
+    # Compute kurtosis (accumulate in float64 for accuracy)
+    np.square(R1, out=R1)                # vorticity   <- vorticity^2, in-place
+    m2 = R1.mean(dtype=np.float64, axis=(1,2))  # shape = Nens
+    np.square(R1, out=R1)                # vorticity^2 <- vorticity^4, in-place
+    m4 = R1.mean(dtype=np.float64, axis=(1,2))  # shape = Nens
+    kurt = m4 / (m2 ** 2)                              # shape = Nens
+
     ### Save to file!
     # Open the file for appending
     with open('./energy_bal.txt', 'a') as f:
@@ -485,6 +506,9 @@ def cond_check(ps,fp,time,ka2):
     with open('./enstrophy_bal.txt', 'a') as f:
         # Write the formatted data to the file
         f.write(f"{time:23.14e} {np.nanmean(enst):23.14e} {np.nanmean(inj_enst):23.14e} {np.nanmean(diss_enst):23.14e} {np.nanmean(hdiss_enst):23.14e}\n")    
+    with open('./kurtosis.txt', 'a') as f:
+        # Write the formatted data to the file
+        f.write(f"{time:23.14e} {np.nanmean(kurt):23.14e}\n")
     return
 
 
