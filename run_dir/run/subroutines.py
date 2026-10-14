@@ -773,8 +773,7 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
 
         # Contribution of each mode to < u_Q . (u.grad)u_K >. Summing this over
         # the modes of a shell Q is the same as filtering u to that shell first.
-        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:]) \ # computes ux[q]*conj(-Gx) = -ux[q]*conj(u.grad(ux_K)) 
-                  + en_tran_calc(uy,Gy,two[None,None,:])   # computes uy[q]*conj(-Gy) = -uy[q]*conj(u.grad(uy_K))
+        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:])  + en_tran_calc(uy,Gy,two[None,None,:])  # computes ux[q]*conj(-Gx) = -ux[q]*conj(u.grad(ux_K)) + uy[q]*conj(-Gy) = -uy[q]*conj(u.grad(uy_K))
         trans_tmp *= tmp
 
         # Shell summing. 
