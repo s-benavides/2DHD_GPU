@@ -634,7 +634,7 @@ def shell_bounds(nshell,binning='round',base=2.0):
     return lo,hi
 
 
-def shell_index(ka2,nshell=None,binning='round',base=2.0):
+def shell_index(ka2,nshell=None,binning='round'):
     """
     Precomputes shell membership, in the same spirit as inds_polar in main.py.
 
@@ -671,11 +671,9 @@ def shell_index(ka2,nshell=None,binning='round',base=2.0):
 
     ARGUMENTS
      ka2    : the square of the wave vector
-     nshell : number of bins. Defaults to n_half for 'round' (so the bins line
-              up with transfer.XXXX.txt row for row), ceil(kcut) for 'floor',
+     nshell : number of bins. Defaults to ceil(kcut) for 'round' and 'floor',
               and just enough bands to cover kcut for 'octave'.
      binning: 'round', 'floor' or 'octave'
-     base   : ratio between successive band edges, 'octave' only.
 
     RETURNS
      [shell_ind, inds_shell]: the shell index of every mode, and a list of the
@@ -683,20 +681,22 @@ def shell_index(ka2,nshell=None,binning='round',base=2.0):
      range each bin covers.
     """
     if binning=='round':
-        if nshell is None:
-            nshell = n_half
+        nshell_tmp = int(numpy.ceil(float(kcut))) # nshell determines Klist only
         kr = np.round(np.sqrt(ka2)).astype(Ti)
         shell_ind = kr-1
         shell_ind[kr==0] = 0 # fold the k~0 modes into the first bin, as transfers() does
     elif binning=='floor':
-        if nshell is None:
-            nshell = int(numpy.ceil(float(kcut)))
+        nshell_tmp = int(numpy.ceil(float(kcut))) # nshell determines Klist only
         shell_ind = np.floor(np.sqrt(ka2)).astype(Ti)
     elif binning=='octave':
-        if base<=1.0:
-            raise ValueError("base must be > 1")
         if nshell is None:
-            nshell = int(numpy.ceil(numpy.log(float(kcut))/numpy.log(base)))+1
+            base = numpy.sqrt(2) # Default is sqrt(2), which works well for typical resolutions
+            nshell_tmp = int(numpy.ceil(numpy.log(float(kcut))/numpy.log(base)))+1
+        else:
+            nshell_tmp = numpy.copy(nshell)
+            base = kcut**(1/(nshell_tmp-1)) # Choose base according to nshell (will be same for Klist)
+            if base<=1.0:
+                raise ValueError("base must be > 1")
         kmag = np.sqrt(ka2)
         # band K is base**(K-1) < |k| <= base**K, so K = ceil(log_base|k|)
         lg = np.log(np.maximum(kmag,Tf(1.0)))/Tf(numpy.log(base))
@@ -706,13 +706,12 @@ def shell_index(ka2,nshell=None,binning='round',base=2.0):
         raise ValueError("binning must be 'round', 'floor' or 'octave'")
 
     inds_shell = []
-    for K in range(nshell):
+    for K in range(nshell_tmp):
         inds_shell.append(np.where(shell_ind==K))
     return shell_ind,inds_shell
 
 
-
-def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
+def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist):
     """
     Computes the shell-to-shell kinetic energy transfer
 
@@ -730,7 +729,7 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
      KY  : wave-vector ky
      I   : Imaginary matrix.
      shell_ind, inds_shell: output of shell_index
-     Klist: receiving shells to compute. Defaults to all of them.
+     Klist: list for K's. All Q's are computed. 
 
     RETURNS
      Nothing. Saves to 'shelltrans.XXXX.txt', a len(Klist) x nshell matrix
@@ -738,10 +737,6 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
      K from Q. The K values are written in a comment on the first line, which
      numpy.loadtxt skips.
     """
-    nshell = len(inds_shell)
-    if Klist is None:
-        Klist = range(nshell)
-    Klist = [int(K) for K in Klist]
 
     two = np.ones((n_half),dtype=Tf)
     two[1:] *= 2
@@ -783,7 +778,7 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
             # Minus sign appears because this calculates energy going into shell Q from K, but we want the opposite: energy going into shell K from Q.
 
     # Ensemble average
-    T = np.mean(T,axis=0)
+    T = np.asnumpy(np.mean(T,axis=0))
 
     # Writes to file
     with open(odir+'/shelltrans.'+f'{int(dump):04}'+'.txt', 'w') as f:

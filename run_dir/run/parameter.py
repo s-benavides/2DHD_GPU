@@ -63,6 +63,7 @@ beta = 1.75                 # Initial KE spectrum (from kup to smallest scales) 
 triad_phase_hist = False    # If true, then loads and updates histograms of triad phases. If no triads.txt file exists, it will turn to false. NOTE: for triad statistics for fractal decimation, start with =True but with no triads.txt file, so that it builds P_frac correctly. Then to start gathering statistics, add triads.txt to the ins directory.  
 Nbins = 30                 # Sets the number of bins for the PDFs of thetas
 shell_transf=False    # Set to True if you want shell-to-shell energy transfers to be measured
-Klist = None # Build list of 'receiver' modes (if Klist=None, all shells will be computed)
+binning = 'round'   # options: 'round' or  'floor', which are linear, and 'octave' which is log binning with a base chosen by nshells (if nshells=None, defaulting to sqrt(2))
+nshell = 15          # If nshell=None: linear bins will have nshell=ceil(kcut), log bins will have log(ceil(kcut))/log(sqrt(2)) shells. If nshells>0: linear bins will choose nshell logspaced modes for K but will compute all ceil(kcut) modes for Q (in T(K,Q)), log bins will change the base so that log(ceil(kcut))/log(base) = nshells
 idir = '../ins'
 odir = '../outs'
