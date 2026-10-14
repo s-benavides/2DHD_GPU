@@ -615,7 +615,26 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
         
     return
 
-def shell_index(ka2,nshell=None,binning='round'):
+def shell_bounds(nshell,binning='round',base=2.0):
+    """
+    The wavenumber range each bin covers, for labelling plots.
+
+    RETURNS
+     (lo,hi): arrays of length nshell. Bin K holds lo[K] < |k| <= hi[K]
+     for 'octave', and |k| ~ K+1 (width one) for 'round'/'floor'.
+    """
+    K = numpy.arange(nshell)
+    if binning=='octave':
+        hi = base**K.astype(float)
+        lo = hi/base
+    elif binning=='round':
+        lo,hi = K+0.5, K+1.5
+    else:
+        lo,hi = K.astype(float), K+1.0
+    return lo,hi
+
+
+def shell_index(ka2,nshell=None,binning='round',base=2.0):
     """
     Precomputes shell membership, in the same spirit as inds_polar in main.py.
 
@@ -633,16 +652,35 @@ def shell_index(ka2,nshell=None,binning='round'):
     published shell-to-shell figures rather than against your own transfers()
     output. The two put a given mode in different shells, so do not mix them.
 
+    binning='octave' uses bands of constant width on a LOGARITHMIC scale:
+    band K holds base**(K-1) < |k| <= base**K, which is [K] = [K/base, K] in
+    the notation of Aluie & Eyink, Phys. Fluids 21, 115108 (2009). Their point
+    is that this is not cosmetic. A transfer function built on linear,
+    unit-width bins can be dominated by NONLOCAL triads, which is what
+    produces the familiar picture of peaks separated by 2*kf; the same flow
+    binned logarithmically is dominated by local interactions, because the
+    local triads are so much more numerous that they overwhelm the nonlocal
+    ones. In their words, "it is very important ... that such logarithmic
+    bands be employed". So use this binning for any statement about the
+    locality of the cascade, and 'round'/'floor' only to compare against
+    unit-bin results in the literature or against your own transfers().
+
+    base=2.0 is their octave. base=sqrt(2) is the other common choice (they
+    note Verma et al. used it) and is worth preferring at modest resolution,
+    where base 2 leaves very few bands inside the inertial range.
+
     ARGUMENTS
      ka2    : the square of the wave vector
-     nshell : number of shells. Defaults to n_half for 'round' (so the bins
-              line up with transfer.XXXX.txt row for row) and to ceil(kcut)
-              for 'floor'.
-     binning: 'round' or 'floor'
+     nshell : number of bins. Defaults to n_half for 'round' (so the bins line
+              up with transfer.XXXX.txt row for row), ceil(kcut) for 'floor',
+              and just enough bands to cover kcut for 'octave'.
+     binning: 'round', 'floor' or 'octave'
+     base   : ratio between successive band edges, 'octave' only.
 
     RETURNS
      [shell_ind, inds_shell]: the shell index of every mode, and a list of the
-     mode indices belonging to each shell.
+     mode indices belonging to each shell. See shell_bounds for the wavenumber
+     range each bin covers.
     """
     if binning=='round':
         if nshell is None:
@@ -654,13 +692,25 @@ def shell_index(ka2,nshell=None,binning='round'):
         if nshell is None:
             nshell = int(numpy.ceil(float(kcut)))
         shell_ind = np.floor(np.sqrt(ka2)).astype(Ti)
+    elif binning=='octave':
+        if base<=1.0:
+            raise ValueError("base must be > 1")
+        if nshell is None:
+            nshell = int(numpy.ceil(numpy.log(float(kcut))/numpy.log(base)))+1
+        kmag = np.sqrt(ka2)
+        # band K is base**(K-1) < |k| <= base**K, so K = ceil(log_base|k|)
+        lg = np.log(np.maximum(kmag,Tf(1.0)))/Tf(numpy.log(base))
+        shell_ind = np.asarray(np.ceil(lg),dtype=Ti)
+        shell_ind[kmag<=0] = 0 # the k=0 mode, which carries nothing
     else:
-        raise ValueError("binning must be 'round' or 'floor'")
+        raise ValueError("binning must be 'round', 'floor' or 'octave'")
 
     inds_shell = []
     for K in range(nshell):
         inds_shell.append(np.where(shell_ind==K))
     return shell_ind,inds_shell
+
+
 
 def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
     """
