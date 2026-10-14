@@ -52,8 +52,24 @@ inds_polar = []
 for ii in range(n_half):
     kk = ii+1
     inds_polar.append(np.where(np.round(np.sqrt(ka2)).astype(Ti)==kk))
-# For shell-to-shell transfers
-shell_ind,inds_shell = shell_index(ka2)
+if shell_transf:   
+    # For shell-to-shell transfers
+    shell_ind,inds_shell = shell_index(ka2,nshell=nshell,binning=binning)
+    # Build Klist for shell-to-shell transfers
+    if (binning=='round') or (binning=='floor'):
+        if nshell==None: # Go through all linear shells
+            nshell_tmp = int(numpy.ceil(float(kcut)))
+            Klist = [int(K) for K in range(nshell_tmp)]
+        else:
+            nshell_tmp = numpy.copy(nshell) # Here nshell determines Klist size
+            # Construction of Klist is now logarithmic in wavenumber:
+            Klist = np.logspace(0,numpy.log10(kcut),nshell_tmp,dtype=Ti)
+    elif binning=='octave':
+       # Here the nshells are already set
+        nshell_tmp = len(inds_shell)
+        Klist = [int(K) for K in range(nshell_tmp)]
+    else:
+        raise ValueError("binning must be 'round', 'floor' or 'octave'")
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
@@ -340,7 +356,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         spectrum(ps,dump,ka2)
         transfers(ps,dump,ka2,KX,KY,I,inds_polar)
         if shell_transf:
-            shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=Klist)
+            shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist)
         with open('./time_spec.txt', 'a') as f:
             f.write(f"{int(dump):04} {time:14.6F}\n")
 
