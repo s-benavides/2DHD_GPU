@@ -182,12 +182,13 @@ averages_calc = np.ElementwiseKernel(
 
 # """
 # Calculate energy transfer term
+# nl = u.grad(ww), so on RHS we need: psi*(-nl) = -psi(u.grad(ww))
 # """
 en_tran_calc = np.ElementwiseKernel(
    ''+Tc.__name__+' ps,'+Tc.__name__+' nl,'+Tf.__name__+' two',
    ''+Tf.__name__+' out',
    f"""
-    out = two*real(ps*conj(nl));
+    out = -two*real(ps*conj(nl));
     """,
    'en_tran_calc')
 
@@ -572,11 +573,11 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
     tmp = 1/n**4
 
     # Nonlinear term
-    nl = laplak2(ps,ka2[None,:,:]) # Makes -w_2D
-    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+    nl = laplak2(ps,ka2[None,:,:]) # Makes negative vorticity, -ww
+    nl = poisson(ps,nl,ka2,KX,KY,I) # Makes [ps,-ww] = -[ps,ww] = u.grad(ww)
 
     ### Energy and Enstrophy flux
-    en_tran_tmp = en_tran_calc(ps,nl,two[None,None,:])*tmp
+    en_tran_tmp = en_tran_calc(ps,nl,two[None,None,:])*tmp # computes ps*conj(-nl) = -psi*conj(u.grad(ww))
     enst_tran_tmp = en_tran_tmp*ka2[None,:,:]
     enst_tran = np.zeros((Nens,n_half),dtype=Tf)  
     en_tran = np.zeros((Nens,n_half),dtype=Tf)
@@ -605,8 +606,9 @@ def transfers(ps,dump,ka2,KX,KY,I,inds_polar):
             f.write(f"{enst_tran[i]:24.15E} {en_tran[i]:24.15E}\n")
         
     # Fluxes:
-    pi_enst = np.cumsum(enst_tran)
-    pi_en = np.cumsum(en_tran)
+    # Multiply by -1 because now the flux is 'energy flowing out of modes k<K' instead of transfer, which is energy flowing into mode k by the nonlinearity.
+    pi_enst = -np.cumsum(enst_tran)
+    pi_en = -np.cumsum(en_tran)
     with open(odir+'/fluxes.'+f'{int(dump):04}'+'.txt', 'w') as f:
         for i in range(n_half):
             f.write(f"{pi_enst[i]:24.15E} {pi_en[i]:24.15E}\n")
@@ -721,14 +723,15 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist=None):
 
         # Contribution of each mode to < u_Q . (u.grad)u_K >. Summing this over
         # the modes of a shell Q is the same as filtering u to that shell first.
-        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:]) \
-                  + en_tran_calc(uy,Gy,two[None,None,:])
+        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:]) \ # computes ux[q]*conj(-Gx) = -ux[q]*conj(u.grad(ux_K)) 
+                  + en_tran_calc(uy,Gy,two[None,None,:])   # computes uy[q]*conj(-Gy) = -uy[q]*conj(u.grad(uy_K))
         trans_tmp *= tmp
 
         # Shell summing. 
         for Q in range(nshell):
             rows, cols = inds_shell[Q]
-            T[:,iK,Q] = -trans_tmp[:,rows,cols].sum(axis=1)
+            T[:,iK,Q] = -trans_tmp[:,rows,cols].sum(axis=1) # sums over shells q==Q.
+            # Minus sign appears because this calculates energy going into shell Q from K, but we want the opposite: energy going into shell K from Q.
 
     # Ensemble average
     T = np.mean(T,axis=0)
