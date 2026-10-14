@@ -430,8 +430,8 @@ while (time_wall.time() < sim_end)&(t<=step):
             fp = const_inj(C3,ka2,rng)
             
         # Nonlinear term
-        nl = laplak2(C3,ka2[None,:,:]) # Makes -w_2D
-        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes -curl(u_2D x w_2D)
+        nl = laplak2(C3,ka2[None,:,:]) # Computes -ww
+        nl = poisson(C3,nl,ka2,KX,KY,I) # Makes [psi,-ww] = -[psi,ww] = u.grad(ww)
         
         tmp1 = dt/Tf(o)
         C3 = NL(ps,nl,fp,tmp1,nu,hnu,nn,mm,ka2[None,:,:],kmax)
