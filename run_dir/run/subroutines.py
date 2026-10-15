@@ -788,6 +788,93 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist):
 
     return
 
+def ae_sweep(nP=None,width=2.0):
+    """
+    Builds the dense P sweep for shell_transfer_AE.
+
+    Aluie & Eyink label a band by its UPPER edge: [P] = [P/width, P]. The sweep
+    is dense and the bands OVERLAP, which is what makes Fig. 8(b) a smooth
+    curve rather than a handful of points.
+    """
+    if nP is None:
+        nP = int(numpy.ceil(float(kcut)))
+    return numpy.linspace(1.0,float(kcut),nP)
+
+
+def shell_transfer_AE(ps,dump,ka2,KX,KY,I,Kvals,Pvals,width=2.0):
+    """
+    Shell-to-shell transfer with SLIDING logarithmic bands, as in Fig. 8(b) of
+    Aluie & Eyink, Phys. Fluids 21, 115108 (2009):
+
+        T([K],[P]),   [K] = [K/width, K],   [P] = [P/width, P]
+
+    for a few fixed K and a dense sweep of P. Successive P bands overlap, so
+    this is a SCAN, not a decomposition: sum_P T([K],[P]) is meaningless (each
+    mode is counted in many bands), and there is no flux or en_tran sum rule.
+    Use shell_transfer for anything that has to add up.
+
+    What does still hold, because it is a pairwise identity needing no
+    partition: T([K],[P]) = -T([P],[K]), and T([K],[K]) = 0.
+
+    Sign follows shell_transfer in this file, which is the opposite of the
+    paper's: here sum_Q T = +en_tran. Negate before overlaying their Fig. 8(b).
+
+    Cost is carried by K only: 6 transforms per K value, plus 2. The P sweep is
+    masked sums over an array already in memory, so a dense sweep is nearly free.
+    """
+    kmag = np.sqrt(ka2)
+    nK,nP = len(Kvals),len(Pvals)
+
+    two = np.ones((n_half),dtype=Tf)
+    two[1:] *= 2
+    tmp = 1/n**4
+
+    # Velocity, u = (dpsi/dy,-dpsi/dx), in spectral and in real space
+    ux = derivk2(KY[None,:,:],ps,I[None,:,:])
+    uy = -derivk2(KX[None,:,:],ps,I[None,:,:])
+    ux_R = np.fft.irfftn(ux,axes=(1,2))
+    uy_R = np.fft.irfftn(uy,axes=(1,2))
+
+    T = np.zeros((Nens,nK,nP),dtype=Tf)
+
+    for iK,K in enumerate(Kvals):
+        # Band-pass the velocity to [K/width, K]
+        cond = (kmag>Tf(K/width))&(kmag<=Tf(K))
+        uxK = ux*cond[None,:,:]
+        uyK = uy*cond[None,:,:]
+
+        # Its four derivatives, in real space
+        dxx = np.fft.irfftn(derivk2(KX[None,:,:],uxK,I[None,:,:]),axes=(1,2))
+        dxy = np.fft.irfftn(derivk2(KY[None,:,:],uxK,I[None,:,:]),axes=(1,2))
+        dyx = np.fft.irfftn(derivk2(KX[None,:,:],uyK,I[None,:,:]),axes=(1,2))
+        dyy = np.fft.irfftn(derivk2(KY[None,:,:],uyK,I[None,:,:]),axes=(1,2))
+
+        # Advection of the band-passed field, (u.grad)u_[K], back to spectral
+        Gx = np.fft.rfftn(quad_plus(ux_R,dxx,uy_R,dxy),axes=(1,2))
+        Gy = np.fft.rfftn(quad_plus(ux_R,dyx,uy_R,dyy),axes=(1,2))
+
+        # Per-mode contribution to < u_[P] . (u.grad)u_[K] >
+        trans_tmp = en_tran_calc(ux,Gx,two[None,None,:]) \
+                  + en_tran_calc(uy,Gy,two[None,None,:])
+        trans_tmp *= tmp
+
+        # Sweep P. The bands overlap, so these are masked sums rather than a
+        # partition: a mode contributes to every band that contains it.
+        for iP,P in enumerate(Pvals):
+            mP = (kmag>Tf(P/width))&(kmag<=Tf(P))
+            T[:,iK,iP] = -np.sum(trans_tmp*mP[None,:,:],axis=(1,2))
+
+    # Ensemble average, then one bulk copy to the host
+    T = np.asnumpy(np.mean(T,axis=0))
+
+    # Writes to file
+    with open(odir+'/shelltrans_AE.'+f'{int(dump):04}'+'.txt', 'w') as f:
+        f.write("# K = "+" ".join("%g"%K for K in Kvals)+"\n")
+        f.write("# P = "+" ".join("%g"%P for P in Pvals)+"\n")
+        for iK in range(nK):
+            f.write(" ".join(f"{T[iK,iP]:24.15E}" for iP in range(nP))+"\n")
+
+    return
 
 def thetauuu_calc(ps,i_count,thetauuu,thetauuu_joint,scriptK,rhok,rhop,rhoq,Rkpq,Tkpq,indKX,indKY,indPX,indPY,indQX,indQY,kmag,pmag,qmag,triad_pair_list):
     """
