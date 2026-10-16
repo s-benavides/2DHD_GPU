@@ -1,4 +1,4 @@
-# import numpy as np
+import numpy
 import cupy as np
 
 ###########################
@@ -68,7 +68,7 @@ nshell = 40          # If nshell=None: linear bins will have nshell=ceil(kcut), 
 ### Transfer function a la Aluie & Eyink, Phys. Fluids 21, 115108 (2009)#
 shell_transf_AE = False
 width = 2.0 # Choose base size for bins (e.g. [K/width,K] for one bin)
-Kvals = np.logspace(1,np.log10(kup),10,dtype=Ti) # Choose K values for receiving bin
+Kvals = numpy.logspace(1,numpy.log10(kup),10,dtype=Ti) # Choose K values for receiving bin
 nP = None                              # Choose number of P values for donor bins. If nP = None, nP = np.linspace(1,kcut,int(ceil(kcut))) so that the T(K,P) curve looks smooth, like Fig. 8 in A&E 2009
 ###
 idir = '../ins'

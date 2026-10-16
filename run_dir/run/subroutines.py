@@ -788,19 +788,6 @@ def shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist):
 
     return
 
-def ae_sweep(nP=None,width=2.0):
-    """
-    Builds the dense P sweep for shell_transfer_AE.
-
-    Aluie & Eyink label a band by its UPPER edge: [P] = [P/width, P]. The sweep
-    is dense and the bands OVERLAP, which is what makes Fig. 8(b) a smooth
-    curve rather than a handful of points.
-    """
-    if nP is None:
-        nP = int(numpy.ceil(float(kcut)))
-    return numpy.linspace(1.0,float(kcut),nP)
-
-
 def shell_transfer_AE(ps,dump,ka2,KX,KY,I,Kvals,Pvals,width=2.0):
     """
     Shell-to-shell transfer with SLIDING logarithmic bands, as in Fig. 8(b) of
@@ -822,6 +809,8 @@ def shell_transfer_AE(ps,dump,ka2,KX,KY,I,Kvals,Pvals,width=2.0):
     Cost is carried by K only: 6 transforms per K value, plus 2. The P sweep is
     masked sums over an array already in memory, so a dense sweep is nearly free.
     """
+    Kvals = [float(K) for K in Kvals]
+    Pvals = [float(P) for P in Pvals]
     kmag = np.sqrt(ka2)
     nK,nP = len(Kvals),len(Pvals)
 

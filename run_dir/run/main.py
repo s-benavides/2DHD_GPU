@@ -75,7 +75,9 @@ if shell_transf:
         raise ValueError("binning must be 'round', 'floor' or 'octave'")
 if shell_transf_AE:
     ### Aluie and Eyink PoF 2009 style binning:
-    Pvals = ae_sweep(nP=nP,width=width)
+    if nP is None:
+        nP = int(numpy.ceil(float(kcut)))
+    Pvals = numpy.linspace(1.0,float(kcut),nP)
 
 # If recording triad statistics, load relevant information
 if triad_phase_hist:
@@ -387,7 +389,7 @@ while (time_wall.time() < sim_end)&(t<=step):
 
     # Random force
     if iflow==3:
-    fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
+        fp = rand_force(dt,ka2,ka,ka_half,rng,cond_rand_force,counts)
 
     # Every 'sstep' steps, generates external files with the power spectrum
     if times==sstep:
@@ -398,7 +400,7 @@ while (time_wall.time() < sim_end)&(t<=step):
         if shell_transf:
             shell_transfer(ps,dump,ka2,KX,KY,I,shell_ind,inds_shell,Klist)
         if shell_transf_AE:
-            shell_transfer_AE(ps,dump,ka2,KX,KY,I,Kvals,Pvals)
+            shell_transfer_AE(ps,dump,ka2,KX,KY,I,Kvals,Pvals,width=width)
         with open('./time_spec.txt', 'a') as f:
             f.write(f"{int(dump):04} {time:14.6F}\n")
 
